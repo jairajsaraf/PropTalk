@@ -122,11 +122,11 @@ def validate_query(sql: str, allowed_tables: list[str]) -> tuple[bool, str, str]
             if ref_normalized == allowed:
                 matched = True
                 break
-            # Suffix match: all parts of the reference must match the
-            # corresponding trailing parts of the allowed name.
+            # Suffix match: require at least schema.table (2+ parts) to
+            # prevent bare table names from matching across schemas/databases.
             # e.g. "dbo.tablename" matches "db.dbo.tablename",
-            # but "other_db.dbo.tablename" does NOT match "db.dbo.tablename".
-            if len(ref_parts) < len(allowed_parts):
+            # but "tablename" alone does NOT match (too ambiguous).
+            if len(ref_parts) >= 2 and len(ref_parts) < len(allowed_parts):
                 tail = allowed_parts[-len(ref_parts):]
                 if ref_parts == tail:
                     matched = True

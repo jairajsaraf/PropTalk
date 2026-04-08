@@ -1,8 +1,9 @@
 """CSV fallback backend — load synthetic CSVs, extract schema, run pandas queries."""
 
+import multiprocessing
 import os
+import pickle
 import re
-import threading
 import pandas as pd
 
 try:
@@ -98,11 +99,20 @@ _BLOCKED_PATTERNS = [
     r"\bsocket\b",        # no network access
     r"\brequests\b",      # no HTTP requests
     r"\burllib\b",        # no URL access
-    r"\.to_csv\s*\(",     # no writing files
-    r"\.to_excel\s*\(",   # no writing files
-    r"\.to_json\s*\(",    # no writing files
-    r"\.to_sql\s*\(",     # no writing to databases
-    r"\.to_parquet\s*\(", # no writing files
+    r"\.to_csv\s*\(",       # no writing files
+    r"\.to_excel\s*\(",     # no writing files
+    r"\.to_json\s*\(",      # no writing files
+    r"\.to_sql\s*\(",       # no writing to databases
+    r"\.to_parquet\s*\(",   # no writing files
+    r"\.to_pickle\s*\(",    # no writing pickle files
+    r"\.to_hdf\s*\(",       # no writing HDF5 files
+    r"\.to_feather\s*\(",   # no writing feather files
+    r"\.to_stata\s*\(",     # no writing Stata files
+    r"\.to_gbq\s*\(",       # no writing to BigQuery
+    r"\.to_latex\s*\(",     # no writing LaTeX files
+    r"\.to_html\s*\(",      # no writing HTML files
+    r"\.to_clipboard\s*\(", # no writing to clipboard
+    r"\.to_markdown\s*\(",  # no writing markdown files
     r"\bread_csv\b",      # no reading files via pd.read_csv
     r"\bread_excel\b",    # no reading files via pd.read_excel
     r"\bread_json\b",     # no reading files via pd.read_json
@@ -127,12 +137,25 @@ def _validate_pandas_code(code: str) -> str | None:
 _EXEC_TIMEOUT = 30  # seconds
 
 
+def _exec_worker(code: str, df_bytes: bytes, result_queue: multiprocessing.Queue):
+    """Worker function that runs in a subprocess to execute pandas code."""
+    try:
+        df = pickle.loads(df_bytes)
+        namespace = {"df": df, "pd": pd}
+        exec(code, {"__builtins__": {}}, namespace)
+        result = namespace.get("result")
+        result_queue.put(("ok", pickle.dumps(result)))
+    except Exception as exc:
+        result_queue.put(("error", str(exc)))
+
+
 def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     """Execute a pandas expression on a copy of the DataFrame.
 
     The LLM-generated code should assign results to a variable called `result`.
-    Code is scanned for dangerous patterns before execution and runs with a
-    timeout to prevent infinite loops or heavy computation from blocking the app.
+    Code is scanned for dangerous patterns before execution. Execution runs in
+    a subprocess with a timeout — the process is terminated on timeout, so
+    infinite loops or heavy computation cannot accumulate.
 
     Args:
         df: The source DataFrame.
@@ -150,34 +173,36 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     if rejection:
         raise ValueError(rejection)
 
-    # Work on a copy to prevent mutations
-    df = df.copy()
+    # Serialize DataFrame for the subprocess
+    df_bytes = pickle.dumps(df.copy())
+    result_queue = multiprocessing.Queue()
 
-    # Restricted namespace — only pandas and the DataFrame
-    namespace = {"df": df, "pd": pd}
+    proc = multiprocessing.Process(
+        target=_exec_worker, args=(code, df_bytes, result_queue), daemon=True
+    )
+    proc.start()
+    proc.join(timeout=_EXEC_TIMEOUT)
 
-    exec_error: list[BaseException] = []
-
-    def _run():
-        try:
-            exec(code, {"__builtins__": {}}, namespace)
-        except Exception as exc:
-            exec_error.append(exc)
-
-    # Run in a daemon thread with a timeout to guard against infinite loops.
-    # Daemon threads don't block process exit if they outlive the timeout.
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-    thread.join(timeout=_EXEC_TIMEOUT)
-    if thread.is_alive():
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(timeout=2)
         raise ValueError(
             f"Query execution timed out after {_EXEC_TIMEOUT} seconds. "
             "Try a simpler query."
         )
-    if exec_error:
-        raise exec_error[0]
 
-    result = namespace.get("result")
+    if result_queue.empty():
+        raise ValueError("Execution produced no result.")
+
+    status, payload = result_queue.get_nowait()
+    if status == "error":
+        raise ValueError(f"Execution error: {payload}")
+
+    result = pickle.loads(payload)
+
     if result is None:
         raise ValueError(
             "The generated code did not assign output to 'result'. "
