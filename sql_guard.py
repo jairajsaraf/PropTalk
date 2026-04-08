@@ -47,7 +47,9 @@ def _extract_table_references(sql: str) -> list[str]:
 
     # Match FROM/JOIN followed by one or more comma-separated table references
     # e.g. FROM [db].[dbo].[t1] a, [db].[dbo].[t2] b
-    pattern = rf"(?:FROM|JOIN)\s+({table_token}(?:\s+\w+)?(?:\s*,\s*{table_token}(?:\s+\w+)?)*)"
+    # or   FROM [db].[dbo].[t1] AS a, [db].[dbo].[t2] AS b
+    alias = r"(?:\s+(?:AS\s+)?\w+)?"
+    pattern = rf"(?:FROM|JOIN)\s+({table_token}{alias}(?:\s*,\s*{table_token}{alias})*)"
     for block_match in re.finditer(pattern, sql, re.IGNORECASE):
         block = block_match.group(1)
         # Split on commas and extract each table name (strip optional alias)
