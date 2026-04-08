@@ -134,6 +134,12 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Sample data (generated locally)
+sample_data/*.csv
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
 # Environments
 .env
 .envrc
