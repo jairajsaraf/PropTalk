@@ -97,23 +97,31 @@ def validate_query(sql: str, allowed_tables: list[str]) -> tuple[bool, str, str]
 
     for table_ref in referenced_tables:
         ref_normalized = _normalize_table_name(table_ref)
-        # Check if the reference matches any allowed table (exact or suffix match)
+        ref_parts = ref_normalized.split(".")
         matched = False
         for allowed in allowed_normalized:
-            if ref_normalized == allowed or allowed.endswith("." + ref_normalized):
-                matched = True
-                break
-            # Also allow referencing just the table part of a fully qualified name
             allowed_parts = allowed.split(".")
-            ref_parts = ref_normalized.split(".")
-            if ref_parts[-1] == allowed_parts[-1]:
+            # Exact match
+            if ref_normalized == allowed:
                 matched = True
                 break
+            # Suffix match: all parts of the reference must match the
+            # corresponding trailing parts of the allowed name.
+            # e.g. "dbo.tablename" matches "db.dbo.tablename",
+            # but "other_db.dbo.tablename" does NOT match "db.dbo.tablename".
+            if len(ref_parts) < len(allowed_parts):
+                tail = allowed_parts[-len(ref_parts):]
+                if ref_parts == tail:
+                    matched = True
+                    break
         if not matched:
             return False, "", f"Table not in whitelist: {table_ref}"
 
-    # Force row limit if not present
+    # Force row limit if not present — inject TOP directly instead of
+    # wrapping in a subquery (which would break ORDER BY clauses).
     if not _has_row_limit(upper):
-        normalized = f"SELECT TOP 10000 * FROM ({normalized}) AS subq"
+        normalized = re.sub(
+            r"^SELECT\b", "SELECT TOP 10000", normalized, count=1, flags=re.IGNORECASE
+        )
 
     return True, normalized, ""

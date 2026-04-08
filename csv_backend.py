@@ -1,6 +1,7 @@
 """CSV fallback backend — load synthetic CSVs, extract schema, run pandas queries."""
 
 import os
+import re
 import pandas as pd
 
 try:
@@ -76,10 +77,48 @@ def get_schema(dataset_name: str) -> str:
     return "\n".join(lines)
 
 
+# Patterns that should never appear in LLM-generated pandas code
+_BLOCKED_PATTERNS = [
+    r"\bimport\b",        # no imports
+    r"\bopen\s*\(",       # no file access
+    r"\bos\b",            # no os module
+    r"\bsys\b",           # no sys module
+    r"\bsubprocess\b",    # no subprocess
+    r"\b__\w+__\b",       # no dunder attributes (__class__, __import__, etc.)
+    r"\beval\s*\(",       # no eval
+    r"\bexec\s*\(",       # no nested exec
+    r"\bcompile\s*\(",    # no compile
+    r"\bglobals\s*\(",    # no globals access
+    r"\blocals\s*\(",     # no locals access
+    r"\bgetattr\s*\(",    # no dynamic attribute access
+    r"\bsetattr\s*\(",    # no dynamic attribute setting
+    r"\bdelattr\s*\(",    # no dynamic attribute deletion
+    r"\bbreakpoint\s*\(", # no debugger
+    r"\bsocket\b",        # no network access
+    r"\brequests\b",      # no HTTP requests
+    r"\burllib\b",        # no URL access
+    r"\.to_csv\s*\(",     # no writing files
+    r"\.to_excel\s*\(",   # no writing files
+    r"\.to_json\s*\(",    # no writing files
+    r"\.to_sql\s*\(",     # no writing to databases
+    r"\.to_parquet\s*\(", # no writing files
+]
+
+
+def _validate_pandas_code(code: str) -> str | None:
+    """Check pandas code for dangerous patterns. Returns rejection reason or None."""
+    for pattern in _BLOCKED_PATTERNS:
+        match = re.search(pattern, code, re.IGNORECASE)
+        if match:
+            return f"Blocked pattern in generated code: {match.group()}"
+    return None
+
+
 def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     """Execute a pandas expression on a copy of the DataFrame.
 
     The LLM-generated code should assign results to a variable called `result`.
+    Code is scanned for dangerous patterns before execution.
 
     Args:
         df: The source DataFrame.
@@ -89,9 +128,14 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
         The result DataFrame.
 
     Raises:
-        ValueError: If the code doesn't produce a result variable.
+        ValueError: If the code doesn't produce a result variable or is unsafe.
         Exception: On execution errors.
     """
+    # Validate code before execution
+    rejection = _validate_pandas_code(code)
+    if rejection:
+        raise ValueError(rejection)
+
     # Work on a copy to prevent mutations
     df = df.copy()
 
