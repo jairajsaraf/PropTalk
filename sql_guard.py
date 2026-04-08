@@ -39,12 +39,25 @@ def _has_row_limit(sql_upper: str) -> bool:
 def _extract_table_references(sql: str) -> list[str]:
     """Extract table references from SQL (after FROM / JOIN keywords).
 
-    Handles fully qualified names like [db].[schema].[table] and unbracketed names.
+    Handles fully qualified names like [db].[schema].[table], unbracketed names,
+    and comma-separated table lists (old-style joins).
     """
     tables = []
-    pattern = r"(?:FROM|JOIN)\s+([\[\w\]\.]+)"
-    for match in re.finditer(pattern, sql, re.IGNORECASE):
-        tables.append(match.group(1))
+    table_token = r"[\[\w\]\.]+"
+
+    # Match FROM/JOIN followed by one or more comma-separated table references
+    # e.g. FROM [db].[dbo].[t1] a, [db].[dbo].[t2] b
+    pattern = rf"(?:FROM|JOIN)\s+({table_token}(?:\s+\w+)?(?:\s*,\s*{table_token}(?:\s+\w+)?)*)"
+    for block_match in re.finditer(pattern, sql, re.IGNORECASE):
+        block = block_match.group(1)
+        # Split on commas and extract each table name (strip optional alias)
+        for part in block.split(","):
+            part = part.strip()
+            if part:
+                # The table name is the first token; alias (if any) follows
+                token_match = re.match(rf"({table_token})", part)
+                if token_match:
+                    tables.append(token_match.group(1))
     return tables
 
 
