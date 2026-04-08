@@ -95,6 +95,10 @@ def validate_query(sql: str, allowed_tables: list[str]) -> tuple[bool, str, str]
     referenced_tables = _extract_table_references(normalized)
     allowed_normalized = [_normalize_table_name(t) for t in allowed_tables]
 
+    # Reject queries with no table references (e.g. SELECT @@version, SELECT DB_NAME())
+    if not referenced_tables:
+        return False, "", "Query must reference at least one whitelisted table."
+
     for table_ref in referenced_tables:
         ref_normalized = _normalize_table_name(table_ref)
         ref_parts = ref_normalized.split(".")
