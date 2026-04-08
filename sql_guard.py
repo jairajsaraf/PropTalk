@@ -29,7 +29,7 @@ def _normalize(sql: str) -> str:
 
 def _has_row_limit(sql_upper: str) -> bool:
     """Check if query already has TOP or OFFSET...FETCH."""
-    if re.search(r"\bTOP\s+\d+", sql_upper):
+    if re.search(r"\bTOP\s*\(?\s*\d+\s*\)?\b", sql_upper):
         return True
     if re.search(r"\bOFFSET\b.*\bFETCH\b", sql_upper):
         return True
