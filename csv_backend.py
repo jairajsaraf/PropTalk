@@ -113,6 +113,7 @@ _BLOCKED_PATTERNS = [
     r"\.to_html\s*\(",      # no writing HTML files
     r"\.to_clipboard\s*\(", # no writing to clipboard
     r"\.to_markdown\s*\(",  # no writing markdown files
+    r"\bread_pickle\b",    # no reading pickle files (unsafe deserialization)
     r"\bread_csv\b",      # no reading files via pd.read_csv
     r"\bread_excel\b",    # no reading files via pd.read_excel
     r"\bread_json\b",     # no reading files via pd.read_json
