@@ -27,6 +27,9 @@ def _normalize(sql: str) -> str:
     return sql
 
 
+MAX_ROWS = 10000
+
+
 def _has_row_limit(sql_upper: str) -> bool:
     """Check if query already has TOP or OFFSET...FETCH."""
     if re.search(r"\bTOP\s*\(?\s*\d+\s*\)?\b", sql_upper):
@@ -34,6 +37,26 @@ def _has_row_limit(sql_upper: str) -> bool:
     if re.search(r"\bOFFSET\b.*\bFETCH\b", sql_upper):
         return True
     return False
+
+
+def _cap_top_value(sql: str) -> str:
+    """Reduce any TOP N value exceeding MAX_ROWS to MAX_ROWS."""
+    def _replace(m):
+        num = int(re.search(r"\d+", m.group(0)).group())
+        if num > MAX_ROWS:
+            return re.sub(r"\d+", str(MAX_ROWS), m.group(0))
+        return m.group(0)
+    return re.sub(r"\bTOP\s*\(?\s*\d+\s*\)?\b", _replace, sql, count=1, flags=re.IGNORECASE)
+
+
+def _cap_fetch_value(sql: str) -> str:
+    """Reduce FETCH NEXT N to MAX_ROWS if it exceeds the limit."""
+    def _replace(m):
+        num = int(re.search(r"\d+", m.group(0)).group())
+        if num > MAX_ROWS:
+            return re.sub(r"\d+", str(MAX_ROWS), m.group(0))
+        return m.group(0)
+    return re.sub(r"\bFETCH\s+(?:NEXT|FIRST)\s+\d+", _replace, sql, count=1, flags=re.IGNORECASE)
 
 
 def _extract_table_references(sql: str) -> list[str]:
@@ -136,11 +159,13 @@ def validate_query(sql: str, allowed_tables: list[str]) -> tuple[bool, str, str]
         if not matched:
             return False, "", f"Table not in whitelist: {table_ref}"
 
-    # Force row limit if not present — inject TOP directly instead of
-    # wrapping in a subquery (which would break ORDER BY clauses).
+    # Enforce row limit: inject TOP if missing, or cap existing TOP/FETCH values.
     if not _has_row_limit(upper):
         normalized = re.sub(
-            r"^SELECT\b", "SELECT TOP 10000", normalized, count=1, flags=re.IGNORECASE
+            r"^SELECT\b", f"SELECT TOP {MAX_ROWS}", normalized, count=1, flags=re.IGNORECASE
         )
+    else:
+        normalized = _cap_top_value(normalized)
+        normalized = _cap_fetch_value(normalized)
 
     return True, normalized, ""
