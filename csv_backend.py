@@ -102,6 +102,15 @@ _BLOCKED_PATTERNS = [
     r"\.to_json\s*\(",    # no writing files
     r"\.to_sql\s*\(",     # no writing to databases
     r"\.to_parquet\s*\(", # no writing files
+    r"\bread_csv\b",      # no reading files via pd.read_csv
+    r"\bread_excel\b",    # no reading files via pd.read_excel
+    r"\bread_json\b",     # no reading files via pd.read_json
+    r"\bread_sql\b",      # no reading from databases
+    r"\bread_parquet\b",  # no reading parquet files
+    r"\bread_html\b",     # no reading HTML
+    r"\bread_fwf\b",      # no reading fixed-width files
+    r"\bread_clipboard\b", # no reading clipboard
+    r"\bread_table\b",    # no reading tables from files
 ]
 
 
