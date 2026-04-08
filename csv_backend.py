@@ -2,6 +2,7 @@
 
 import os
 import re
+import threading
 import pandas as pd
 
 try:
@@ -123,11 +124,15 @@ def _validate_pandas_code(code: str) -> str | None:
     return None
 
 
+_EXEC_TIMEOUT = 30  # seconds
+
+
 def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     """Execute a pandas expression on a copy of the DataFrame.
 
     The LLM-generated code should assign results to a variable called `result`.
-    Code is scanned for dangerous patterns before execution.
+    Code is scanned for dangerous patterns before execution and runs with a
+    timeout to prevent infinite loops or heavy computation from blocking the app.
 
     Args:
         df: The source DataFrame.
@@ -151,7 +156,26 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     # Restricted namespace — only pandas and the DataFrame
     namespace = {"df": df, "pd": pd}
 
-    exec(code, {"__builtins__": {}}, namespace)
+    exec_error: list[BaseException] = []
+
+    def _run():
+        try:
+            exec(code, {"__builtins__": {}}, namespace)
+        except Exception as exc:
+            exec_error.append(exc)
+
+    # Run in a daemon thread with a timeout to guard against infinite loops.
+    # Daemon threads don't block process exit if they outlive the timeout.
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout=_EXEC_TIMEOUT)
+    if thread.is_alive():
+        raise ValueError(
+            f"Query execution timed out after {_EXEC_TIMEOUT} seconds. "
+            "Try a simpler query."
+        )
+    if exec_error:
+        raise exec_error[0]
 
     result = namespace.get("result")
     if result is None:
