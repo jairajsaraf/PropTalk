@@ -93,7 +93,7 @@ def _random_name(rng: np.random.RandomState) -> str:
 
 def generate_deed_transactions() -> pd.DataFrame:
     """Generate ~5000 synthetic deed transaction records."""
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     cities = list(TEXAS_CITIES.keys())
     weights = [TEXAS_CITIES[c][0] for c in cities]
@@ -133,15 +133,15 @@ def generate_deed_transactions() -> pd.DataFrame:
         occ = "T" if is_investor and rng.random() < 0.85 else ("T" if rng.random() < 0.15 else "S")
 
         # Date — uniform 2020-01-01 to 2025-12-31
-        days_offset = rng.randint(0, 2192)  # ~6 years
+        days_offset = rng.integers(0, 2192)  # ~6 years
         sale_date = pd.Timestamp("2020-01-01") + pd.Timedelta(days=int(days_offset))
 
         records.append({
-            "CLIP": rng.randint(100000000000, 999999999999),
-            "SITUS_STREET_ADDRESS": f"{rng.randint(100, 19999)} {rng.choice(STREET_NAMES)}",
+            "CLIP": rng.integers(100000000000, 999999999999),
+            "SITUS_STREET_ADDRESS": f"{rng.integers(100, 19999)} {rng.choice(STREET_NAMES)}",
             "SITUS_CITY": city,
             "SITUS_COUNTY": county,
-            "SITUS_ZIP_CODE": str(rng.randint(zip_range[0], zip_range[1])),
+            "SITUS_ZIP_CODE": str(rng.integers(zip_range[0], zip_range[1])),
             "PROPERTY_INDICATOR_CODE": prop_code,
             "SALE_AMOUNT": sale_amount,
             "SALE_DERIVED_DATE": sale_date,
@@ -161,7 +161,7 @@ def generate_deed_transactions() -> pd.DataFrame:
 
 def generate_har_listings() -> pd.DataFrame:
     """Generate ~5000 synthetic HAR listing records."""
-    rng = np.random.RandomState(43)
+    rng = np.random.default_rng(43)
 
     cities = list(HOUSTON_AREA_CITIES.keys())
     weights = [HOUSTON_AREA_CITIES[c][0] for c in cities]
@@ -200,14 +200,14 @@ def generate_har_listings() -> pd.DataFrame:
         dom = int(max(1, min(180, rng.exponential(30))))
 
         # Dates
-        listing_days_ago = rng.randint(0, 730)  # within ~2 years
+        listing_days_ago = rng.integers(0, 730)  # within ~2 years
         listing_date = pd.Timestamp("2023-01-01") + pd.Timedelta(days=int(listing_days_ago))
         close_date = listing_date + pd.Timedelta(days=int(dom)) if status == "Closed" else None
 
         records.append({
             "ListingId": f"HAR-{100000 + i}",
             "City": city,
-            "ZipCode": str(rng.randint(zip_range[0], zip_range[1])),
+            "ZipCode": str(rng.integers(zip_range[0], zip_range[1])),
             "ListPrice": list_price,
             "ClosePrice": close_price,
             "StandardStatus": status,
