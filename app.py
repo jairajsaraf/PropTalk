@@ -276,6 +276,16 @@ if question:
             st.markdown("**Raw LLM Response:**")
             st.json(llm_response)
 
+        # Show API debug info if available
+        debug_info = getattr(llm.query_llm, "_last_debug", None)
+        if debug_info:
+            st.markdown("**API Debug:**")
+            st.write(f"Status: {debug_info.get('status_code')}")
+            st.write(f"Content-Type: {debug_info.get('content_type')}")
+            if debug_info.get("parse_error"):
+                st.warning("Response was not standard OpenAI format")
+            st.code(debug_info.get("raw_body", "N/A"), language=None)
+
     # Save to history
     history_entry = {"question": question}
     if mode == "sql":

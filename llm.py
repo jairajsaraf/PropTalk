@@ -5,7 +5,7 @@ import os
 import re
 import time
 
-from openai import OpenAI, APITimeoutError, APIConnectionError
+import requests
 
 from prompts import get_sql_prompt, get_csv_prompt
 
@@ -17,18 +17,17 @@ AVAILABLE_MODELS = [
     "protected.Claude 3.7 Sonnet",
 ]
 
+API_BASE = "https://chat-api.tamu.ai/openai"
 
-def get_client() -> OpenAI:
-    """Create an OpenAI client configured for chat.tamu.ai."""
+
+def _get_api_key() -> str:
+    """Return the TAMU AI API key or raise."""
     api_key = os.getenv("TAMU_AI_API_KEY")
     if not api_key:
         raise ValueError(
             "TAMU_AI_API_KEY not set. Copy .env.example to .env and add your key."
         )
-    return OpenAI(
-        api_key=api_key,
-        base_url="https://chat-api.tamu.ai/openai",
-    )
+    return api_key
 
 
 def _extract_json(text: str) -> dict:
@@ -83,27 +82,55 @@ def query_llm(
     else:
         system_prompt = get_csv_prompt(table_name, schema_info)
 
-    client = get_client()
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": question},
-    ]
+    api_key = _get_api_key()
+    url = f"{API_BASE}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ],
+        "temperature": 0,
+    }
 
     # Retry once on timeout/connection error
     for attempt in range(2):
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0,
-                timeout=60,
-            )
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
             break
-        except (APITimeoutError, APIConnectionError):
+        except (requests.Timeout, requests.ConnectionError):
             if attempt == 0:
                 time.sleep(2)
                 continue
             raise
 
-    content = response.choices[0].message.content
+    # --- Debug logging (prints to terminal) ---
+    print(f"[LLM DEBUG] Status: {resp.status_code}")
+    print(f"[LLM DEBUG] Content-Type: {resp.headers.get('content-type', 'N/A')}")
+    print(f"[LLM DEBUG] Body (first 500 chars): {resp.text[:500]}")
+
+    # Store debug info for Streamlit UI
+    query_llm._last_debug = {
+        "status_code": resp.status_code,
+        "content_type": resp.headers.get("content-type", "N/A"),
+        "raw_body": resp.text[:2000],
+    }
+
+    resp.raise_for_status()
+
+    # Parse response — try OpenAI-compatible JSON first, fall back to raw text
+    try:
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        # Response isn't standard OpenAI format — log full body and use raw text
+        print(f"[LLM DEBUG] Non-standard response. Full body:\n{resp.text}")
+        query_llm._last_debug["parse_error"] = True
+        query_llm._last_debug["raw_body"] = resp.text[:5000]
+        content = resp.text
+
     return _extract_json(content)
