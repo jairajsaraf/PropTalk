@@ -277,7 +277,7 @@ if question:
             st.json(llm_response)
 
         # Show API debug info if available
-        debug_info = getattr(llm.query_llm, "_last_debug", None)
+        debug_info = llm_response.get("_debug") if llm_response else None
         if debug_info:
             st.markdown("**API Debug:**")
             st.write(f"Status: {debug_info.get('status_code')}")
