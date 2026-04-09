@@ -2,6 +2,6 @@ streamlit
 pandas
 numpy
 plotly
-openai
+requests
 python-dotenv
 pyodbc
