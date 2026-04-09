@@ -113,8 +113,8 @@ def query_llm(
     print(f"[LLM DEBUG] Content-Type: {resp.headers.get('content-type', 'N/A')}")
     print(f"[LLM DEBUG] Body (first 500 chars): {resp.text[:500]}")
 
-    # Store debug info for Streamlit UI
-    query_llm._last_debug = {
+    # Build debug info locally (not as global state) to avoid cross-session leakage
+    debug_info = {
         "status_code": resp.status_code,
         "content_type": resp.headers.get("content-type", "N/A"),
         "raw_body": resp.text[:2000],
@@ -129,8 +129,10 @@ def query_llm(
     except (json.JSONDecodeError, KeyError, IndexError, TypeError):
         # Response isn't standard OpenAI format — log full body and use raw text
         print(f"[LLM DEBUG] Non-standard response. Full body:\n{resp.text}")
-        query_llm._last_debug["parse_error"] = True
-        query_llm._last_debug["raw_body"] = resp.text[:5000]
+        debug_info["parse_error"] = True
+        debug_info["raw_body"] = resp.text[:5000]
         content = resp.text
 
-    return _extract_json(content)
+    result = _extract_json(content)
+    result["_debug"] = debug_info
+    return result
