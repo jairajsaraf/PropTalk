@@ -6,6 +6,7 @@ import os
 
 import pandas as pd
 
+from config import TABLE_REGISTRY
 from sql_guard import validate_query
 
 try:
@@ -20,16 +21,10 @@ try:
 except ImportError:
     HAS_STREAMLIT = False
 
-# Table whitelist: display name -> fully qualified SQL Server name
+# Table whitelist derived from config.TABLE_REGISTRY
 # NOTE: Server hostname is NEVER hardcoded — it comes from os.getenv("SQL_SERVER")
-TABLE_WHITELIST = {
-    "Deed Transactions": "[demo_db].[dbo].[deed_transactions]",
-    "MLS Listings": "[demo_db].[dbo].[mls_listings]",
-    "Code Lookups": "[demo_db].[dbo].[code_lookups]",
-    "MLS Statistics": "[demo_db].[dbo].[mls_monthly_stats]",
-    "Property Tax Stats": "[demo_db].[dbo].[property_tax_stats]",
-    "Investor Deed Activity": "[demo_db].[dbo].[investor_deed_activity]",
-    "Data Center Properties": "[demo_db].[dbo].[data_center_properties]",
+TABLE_WHITELIST: dict[str, str] = {
+    t.display_name: t.fq_sql_name for t in TABLE_REGISTRY
 }
 
 

@@ -7,11 +7,11 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
+import config
 import csv_backend
 import db
 import llm
 from chart_builder import build_chart
-from prompts import EXAMPLE_QUESTIONS
 from sql_guard import validate_query
 
 load_dotenv()
@@ -56,19 +56,9 @@ def _build_backend():
     """Instantiate the appropriate backend based on mode detection."""
     mode = detect_mode()
     if mode == "sql":
-        # Build table list from db.TABLE_WHITELIST
-        tables = [
-            {"display_name": name, "table_id": name, "fq_sql_name": fq}
-            for name, fq in db.TABLE_WHITELIST.items()
-        ]
-        return db.SqlBackend(tables)
+        return db.SqlBackend(config.get_sql_tables())
     else:
-        # Build table list from csv_backend.DATASETS
-        tables = [
-            {"display_name": name, "table_id": name, "csv_filename": fname}
-            for name, fname in csv_backend.DATASETS.items()
-        ]
-        return csv_backend.CsvBackend(tables)
+        return csv_backend.CsvBackend(config.get_csv_tables())
 
 
 backend = _build_backend()
@@ -102,7 +92,10 @@ with st.sidebar:
     st.divider()
 
     # Model selector
-    selected_model = st.selectbox("LLM Model", llm.AVAILABLE_MODELS)
+    model_names = [m["name"] for m in config.AVAILABLE_MODELS]
+    model_ids = {m["name"]: m["id"] for m in config.AVAILABLE_MODELS}
+    selected_model_name = st.selectbox("LLM Model", model_names)
+    selected_model = model_ids[selected_model_name]
 
     st.divider()
 
@@ -170,7 +163,7 @@ question = st.text_input(
 )
 
 # Example question buttons
-examples = EXAMPLE_QUESTIONS.get(selected_display, [])
+examples = config.get_example_questions(selected_display)
 if examples:
     st.caption("**Try an example:**")
     cols = st.columns(len(examples))
