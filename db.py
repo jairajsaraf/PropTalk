@@ -1,7 +1,12 @@
 """SQL Server backend — connection, schema introspection, query execution."""
 
+from __future__ import annotations
+
 import os
+
 import pandas as pd
+
+from sql_guard import validate_query
 
 try:
     import pyodbc
@@ -26,6 +31,40 @@ TABLE_WHITELIST = {
     "Investor Deed Activity": "[Research_Dev].[dbo].[Single_Family_Investor_Deed_Activity]",
     "Data Center Properties": "[Research_Dev].[dbo].[DataCenter_Properties_Verified]",
 }
+
+
+class SqlBackend:
+    """SQL Server backend conforming to the DataBackend protocol."""
+
+    def __init__(self, tables: list[dict]) -> None:
+        """Initialize with a list of {display_name, table_id, fq_sql_name} dicts."""
+        self._tables = tables
+        self._fq_map = {t["table_id"]: t["fq_sql_name"] for t in tables}
+
+    def get_tables(self) -> list[dict]:
+        return [{"display_name": t["display_name"], "table_id": t["table_id"]}
+                for t in self._tables]
+
+    def get_schema(self, table_id: str) -> str:
+        fq_name = self._fq_map[table_id]
+        return get_schema(fq_name)
+
+    def execute(self, query: str, table_id: str) -> pd.DataFrame:
+        allowed = self.get_allowed_table_names()
+        is_valid, sanitized, reason = validate_query(query, allowed)
+        if not is_valid:
+            raise ValueError(f"Query rejected: {reason}")
+        return execute_query(sanitized)
+
+    def get_query_language(self) -> str:
+        return "sql"
+
+    def get_allowed_table_names(self) -> list[str]:
+        return list(self._fq_map.values())
+
+    def get_fq_name(self, table_id: str) -> str:
+        """Return the fully qualified SQL name for a table_id."""
+        return self._fq_map[table_id]
 
 
 def get_allowed_table_names() -> list[str]:
