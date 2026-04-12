@@ -9,13 +9,11 @@ import requests
 
 from prompts import get_sql_prompt, get_csv_prompt
 
-DEFAULT_MODEL = "protected.Claude Sonnet 4"
-AVAILABLE_MODELS = [
-    "protected.Claude Sonnet 4",
-    "protected.gemini-2.5-flash",
-    "protected.gpt-4.1",
-    "protected.Claude 3.7 Sonnet",
-]
+from config import AVAILABLE_MODELS as _MODELS_CONFIG
+
+DEFAULT_MODEL = _MODELS_CONFIG[0]["id"]
+# List of model ID strings for backwards compatibility
+AVAILABLE_MODELS = [m["id"] for m in _MODELS_CONFIG]
 
 API_BASE = "https://chat-api.tamu.ai/openai"
 

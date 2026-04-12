@@ -164,48 +164,10 @@ User: Map active listings
 }}"""
 
 
-# Example questions per dataset for the UI
-EXAMPLE_QUESTIONS = {
-    "Deed Transactions": [
-        "Show me the top 10 cities by transaction volume",
-        "What are the average sale prices by investor classification?",
-        "Show cash purchases over $500K in Houston in 2024",
-        "Monthly transaction trend for Harris County",
-    ],
-    "HAR Listings": [
-        "What's the average list price by city?",
-        "Show me active listings with more than 4 bedrooms under $500K",
-        "Average days on market by property type",
-        "Monthly listing trend for 2024",
-    ],
-    "Code Lookups": [
-        "Show all distinct code types",
-        "List property indicator codes and their descriptions",
-        "What land use codes are available?",
-        "Show the first 100 rows",
-    ],
-    "MLS Statistics": [
-        "Show monthly median price trends",
-        "Compare active listings vs closed sales by month",
-        "What are the top areas by total volume?",
-        "Show the first 100 rows sorted by date",
-    ],
-    "Property Tax Stats": [
-        "Average property tax rate by state",
-        "Show tax statistics for Texas",
-        "Compare median home values across states",
-        "Show the first 100 rows",
-    ],
-    "Investor Deed Activity": [
-        "Top 10 counties by investor deed volume",
-        "Monthly investor activity trend",
-        "Compare small vs mega investor purchases by city",
-        "Show investor deed activity in Harris County",
-    ],
-    "Data Center Properties": [
-        "Map all verified data center properties",
-        "Show data centers by state",
-        "List the largest data center properties",
-        "Show the first 100 rows",
-    ],
+# Example questions are now defined in config.py (TABLE_REGISTRY).
+# This dict is kept for backwards compatibility — populated from config.
+from config import TABLE_REGISTRY
+
+EXAMPLE_QUESTIONS: dict[str, list[str]] = {
+    t.display_name: t.example_questions for t in TABLE_REGISTRY
 }

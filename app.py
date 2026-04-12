@@ -7,11 +7,11 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
+import config
 import csv_backend
 import db
 import llm
 from chart_builder import build_chart
-from prompts import EXAMPLE_QUESTIONS
 from sql_guard import validate_query
 
 load_dotenv()
@@ -36,7 +36,7 @@ if "current_question" not in st.session_state:
     st.session_state.current_question = ""
 
 # ---------------------------------------------------------------------------
-# Mode detection
+# Backend initialization
 # ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=60)
@@ -52,7 +52,17 @@ def detect_mode() -> str:
     return "csv"
 
 
-mode = detect_mode()
+def _build_backend():
+    """Instantiate the appropriate backend based on mode detection."""
+    mode = detect_mode()
+    if mode == "sql":
+        return db.SqlBackend(config.get_sql_tables())
+    else:
+        return csv_backend.CsvBackend(config.get_csv_tables())
+
+
+backend = _build_backend()
+mode = backend.get_query_language()  # "sql" or "pandas"
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -68,29 +78,31 @@ with st.sidebar:
     st.divider()
 
     # Table / dataset selector
+    available_tables = backend.get_tables()
+    table_display_names = [t["display_name"] for t in available_tables]
+    table_ids = {t["display_name"]: t["table_id"] for t in available_tables}
+
     if mode == "sql":
-        table_display_names = list(db.TABLE_WHITELIST.keys())
-        selected_table = st.selectbox("Select table", table_display_names)
-        table_fq_name = db.TABLE_WHITELIST[selected_table]
+        selected_display = st.selectbox("Select table", table_display_names)
     else:
-        dataset_names = csv_backend.get_dataset_names()
-        selected_table = st.radio("Select dataset", dataset_names)
-        table_fq_name = selected_table  # Used for display in prompts
+        selected_display = st.radio("Select dataset", table_display_names)
+
+    selected_table_id = table_ids[selected_display]
 
     st.divider()
 
     # Model selector
-    selected_model = st.selectbox("LLM Model", llm.AVAILABLE_MODELS)
+    model_names = [m["name"] for m in config.AVAILABLE_MODELS]
+    model_ids = {m["name"]: m["id"] for m in config.AVAILABLE_MODELS}
+    selected_model_name = st.selectbox("LLM Model", model_names)
+    selected_model = model_ids[selected_model_name]
 
     st.divider()
 
     # Schema explorer
     with st.expander("📋 Schema Explorer"):
         try:
-            if mode == "sql":
-                schema_info = db.get_schema(db.TABLE_WHITELIST[selected_table])
-            else:
-                schema_info = csv_backend.get_schema(selected_table)
+            schema_info = backend.get_schema(selected_table_id)
             st.code(schema_info, language=None)
         except Exception as e:
             st.error(f"Could not load schema: {e}")
@@ -113,7 +125,7 @@ with st.sidebar:
 
 st.title("🏠 Texas Real Estate Data Explorer")
 
-if mode == "csv":
+if mode == "pandas":
     st.info(
         "**Running in demo mode with synthetic data.** "
         "To use real data, set SQL_SERVER in your .env file.",
@@ -131,13 +143,16 @@ if not api_key:
 
 # Load schema for LLM context (may already be cached from sidebar)
 try:
-    if mode == "sql":
-        schema_info = db.get_schema(db.TABLE_WHITELIST[selected_table])
-    else:
-        schema_info = csv_backend.get_schema(selected_table)
+    schema_info = backend.get_schema(selected_table_id)
 except Exception as e:
     st.error(f"Could not load schema: {e}")
     st.stop()
+
+# Resolve the table name for prompts
+if mode == "sql":
+    table_name_for_prompt = backend.get_fq_name(selected_table_id)
+else:
+    table_name_for_prompt = selected_display
 
 # Question input
 st.markdown("### 💬 Ask a question about the data")
@@ -148,7 +163,7 @@ question = st.text_input(
 )
 
 # Example question buttons
-examples = EXAMPLE_QUESTIONS.get(selected_table, [])
+examples = config.get_example_questions(selected_display)
 if examples:
     st.caption("**Try an example:**")
     cols = st.columns(len(examples))
@@ -175,52 +190,48 @@ if question:
     result_df = None
     error_msg = None
 
+    code_key = "sql" if mode == "sql" else "pandas_code"
+
     # Step 1: LLM query generation
     with st.status("Processing your question...", expanded=True) as status:
         st.write("🤖 Generating query...")
         try:
-            if mode == "sql":
-                llm_response = llm.query_llm(
-                    question, schema_info, "sql", table_fq_name, selected_model
-                )
-                generated_code = llm_response.get("sql", "")
-            else:
-                llm_response = llm.query_llm(
-                    question, schema_info, "csv", selected_table, selected_model
-                )
-                generated_code = llm_response.get("pandas_code", "")
+            llm_response = llm.query_llm(
+                question, schema_info, mode, table_name_for_prompt, selected_model
+            )
+            generated_code = llm_response.get(code_key, "")
         except ValueError as e:
             error_msg = f"Configuration error: {e}"
         except Exception as e:
             error_msg = f"LLM error: {e}"
 
-        # Step 2: Validation (SQL mode only)
-        if generated_code and mode == "sql" and not error_msg:
-            st.write("🔍 Validating query...")
-            is_valid, sanitized, reason = validate_query(
-                generated_code, db.get_allowed_table_names()
-            )
-            validation_result = {
-                "is_valid": is_valid,
-                "sanitized_query": sanitized,
-                "rejection_reason": reason,
-            }
-            if not is_valid:
-                error_msg = f"Query rejected: {reason}"
-            else:
-                generated_code = sanitized
-
-        # Step 3: Execution
+        # Step 2: Validation + Execution via backend
         if generated_code and not error_msg:
-            st.write("⚡ Executing query...")
-            try:
-                if mode == "sql":
-                    result_df = db.execute_query(generated_code)
+            if mode == "sql":
+                st.write("🔍 Validating query...")
+                is_valid, sanitized, reason = validate_query(
+                    generated_code, backend.get_allowed_table_names()
+                )
+                validation_result = {
+                    "is_valid": is_valid,
+                    "sanitized_query": sanitized,
+                    "rejection_reason": reason,
+                }
+                if not is_valid:
+                    error_msg = f"Query rejected: {reason}"
                 else:
-                    df = csv_backend.load_data(selected_table)
-                    result_df = csv_backend.execute_pandas(df, generated_code)
-            except Exception as e:
-                error_msg = f"Execution error: {e}"
+                    generated_code = sanitized
+
+            if not error_msg:
+                st.write("⚡ Executing query...")
+                try:
+                    if mode == "sql":
+                        result_df = db.execute_query(generated_code)
+                    else:
+                        df = backend.load_data(selected_table_id)
+                        result_df = csv_backend.execute_pandas(df, generated_code)
+                except Exception as e:
+                    error_msg = f"Execution error: {e}"
 
         elapsed = time.time() - start_time
 
@@ -288,10 +299,7 @@ if question:
 
     # Save to history
     history_entry = {"question": question}
-    if mode == "sql":
-        history_entry["sql"] = generated_code or ""
-    else:
-        history_entry["pandas_code"] = generated_code or ""
+    history_entry[code_key] = generated_code or ""
     if llm_response:
         history_entry["explanation"] = llm_response.get("explanation", "")
     st.session_state.query_history.append(history_entry)

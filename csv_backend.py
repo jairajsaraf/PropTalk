@@ -1,10 +1,15 @@
 """CSV fallback backend — load synthetic CSVs, extract schema, run pandas queries."""
 
+from __future__ import annotations
+
 import multiprocessing
 import os
 import pickle
 import re
+
 import pandas as pd
+
+from config import TABLE_REGISTRY
 
 try:
     import streamlit as st
@@ -14,11 +19,6 @@ except ImportError:
 
 SAMPLE_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 
-DATASETS = {
-    "Deed Transactions": "deed_transactions_sample.csv",
-    "HAR Listings": "har_listings_sample.csv",
-}
-
 # Date columns to parse per dataset
 DATE_COLUMNS = {
     "Deed Transactions": ["SALE_DERIVED_DATE"],
@@ -26,57 +26,96 @@ DATE_COLUMNS = {
 }
 
 
-def get_dataset_names() -> list[str]:
-    """Return available dataset display names."""
-    return list(DATASETS.keys())
-
-
-def load_data(dataset_name: str) -> pd.DataFrame:
-    """Load a CSV dataset from sample_data/.
-
-    Cached with @st.cache_data when running inside Streamlit.
-    """
-    filename = DATASETS.get(dataset_name)
-    if not filename:
-        raise ValueError(f"Unknown dataset: {dataset_name}")
-
+def _load_data(filename: str, date_cols: list[str]) -> pd.DataFrame:
+    """Load a CSV from sample_data/."""
     path = os.path.join(SAMPLE_DIR, filename)
     if not os.path.exists(path):
         raise FileNotFoundError(
             f"Sample data not found at {path}. "
             "Run 'python generate_sample_data.py' first."
         )
-
-    date_cols = DATE_COLUMNS.get(dataset_name, [])
-    df = pd.read_csv(path, parse_dates=date_cols)
-    return df
+    return pd.read_csv(path, parse_dates=date_cols)
 
 
-# Apply Streamlit caching if available
 if HAS_STREAMLIT:
-    load_data = st.cache_data(load_data)
+    _load_data = st.cache_data(_load_data)
 
 
-def get_schema(dataset_name: str) -> str:
-    """Get schema info from a loaded CSV: column names, dtypes, and sample values.
-
-    Returns the same format as db.get_schema() for seamless mode switching.
-    """
-    df = load_data(dataset_name)
+def _get_schema_str(df: pd.DataFrame) -> str:
+    """Build schema string from a DataFrame: column names, dtypes, sample values."""
     lines = []
-
     for col in df.columns:
         dtype = str(df[col].dtype)
         non_null = df[col].dropna()
         samples = non_null.unique()[:3]
         sample_str = ", ".join(str(v) for v in samples)
-
         line = f"- {col} ({dtype})"
         if sample_str:
             line += f" — examples: {sample_str}"
         lines.append(line)
-
     return "\n".join(lines)
+
+
+class CsvBackend:
+    """CSV-based backend conforming to the DataBackend protocol."""
+
+    def __init__(self, tables: list[dict]) -> None:
+        """Initialize with a list of {display_name, table_id, csv_filename} dicts."""
+        self._tables = tables
+        self._file_map = {t["table_id"]: t["csv_filename"] for t in tables}
+
+    def get_tables(self) -> list[dict]:
+        return [{"display_name": t["display_name"], "table_id": t["table_id"]}
+                for t in self._tables]
+
+    def get_schema(self, table_id: str) -> str:
+        df = self.load_data(table_id)
+        return _get_schema_str(df)
+
+    def execute(self, query: str, table_id: str) -> pd.DataFrame:
+        df = self.load_data(table_id)
+        return execute_pandas(df, query)
+
+    def get_query_language(self) -> str:
+        return "pandas"
+
+    def get_allowed_table_names(self) -> list[str]:
+        return list(self._file_map.keys())
+
+    def load_data(self, table_id: str) -> pd.DataFrame:
+        """Load CSV for a given table_id."""
+        filename = self._file_map.get(table_id)
+        if not filename:
+            raise ValueError(f"Unknown dataset: {table_id}")
+        date_cols = DATE_COLUMNS.get(table_id, [])
+        return _load_data(filename, date_cols)
+
+
+# ---------------------------------------------------------------------------
+# Legacy module-level functions (used by existing code during transition)
+# ---------------------------------------------------------------------------
+
+# Derived from config.TABLE_REGISTRY — only tables with CSV fallbacks
+DATASETS: dict[str, str] = {
+    t.display_name: t.csv_filename for t in TABLE_REGISTRY if t.csv_filename
+}
+
+
+def get_dataset_names() -> list[str]:
+    return list(DATASETS.keys())
+
+
+def load_data(dataset_name: str) -> pd.DataFrame:
+    filename = DATASETS.get(dataset_name)
+    if not filename:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+    date_cols = DATE_COLUMNS.get(dataset_name, [])
+    return _load_data(filename, date_cols)
+
+
+def get_schema(dataset_name: str) -> str:
+    df = load_data(dataset_name)
+    return _get_schema_str(df)
 
 
 # Patterns that should never appear in LLM-generated pandas code
