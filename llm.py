@@ -30,6 +30,31 @@ def _get_api_key() -> str:
     return api_key
 
 
+def _parse_sse_stream(body: str) -> str:
+    """Parse SSE (text/event-stream) response into concatenated content.
+
+    Each data line looks like: data: {"choices":[{"delta":{"content":"..."}}]}
+    The last line is: data: [DONE]
+    """
+    chunks = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line.startswith("data: "):
+            continue
+        payload = line[len("data: "):]
+        if payload == "[DONE]":
+            break
+        try:
+            data = json.loads(payload)
+            delta = data["choices"][0].get("delta", {})
+            content = delta.get("content", "")
+            if content:
+                chunks.append(content)
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+            continue
+    return "".join(chunks)
+
+
 def _extract_json(text: str) -> dict:
     """Extract JSON from LLM response, handling markdown fences."""
     # Try direct parse first
@@ -94,7 +119,9 @@ def query_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
-        "temperature": 0,
+        # Claude models on Bedrock with extended thinking require temperature=1
+        "temperature": 1 if model.startswith("protected.Claude") else 0,
+        "stream": False,
     }
 
     # Retry once on timeout/connection error
@@ -122,16 +149,33 @@ def query_llm(
 
     resp.raise_for_status()
 
-    # Parse response — try OpenAI-compatible JSON first, fall back to raw text
-    try:
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-        # Response isn't standard OpenAI format — log full body and use raw text
-        print(f"[LLM DEBUG] Non-standard response. Full body:\n{resp.text}")
-        debug_info["parse_error"] = True
-        debug_info["raw_body"] = resp.text[:5000]
-        content = resp.text
+    content_type = resp.headers.get("content-type", "")
+
+    # Handle SSE streaming response (text/event-stream)
+    if "text/event-stream" in content_type or resp.text.lstrip().startswith("data: "):
+        print("[LLM DEBUG] Detected SSE stream response, parsing chunks...")
+        debug_info["response_format"] = "sse_stream"
+        content = _parse_sse_stream(resp.text)
+        if not content:
+            debug_info["parse_error"] = True
+            debug_info["raw_body"] = resp.text[:5000]
+            raise ValueError(
+                "SSE stream contained no content. "
+                f"Raw body (first 500 chars): {resp.text[:500]}"
+            )
+    else:
+        # Try standard OpenAI JSON response
+        try:
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            debug_info["response_format"] = "openai_json"
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+            # Response isn't standard OpenAI format — log full body and use raw text
+            print(f"[LLM DEBUG] Non-standard response. Full body:\n{resp.text}")
+            debug_info["parse_error"] = True
+            debug_info["raw_body"] = resp.text[:5000]
+            debug_info["response_format"] = "raw_text"
+            content = resp.text
 
     result = _extract_json(content)
     result["_debug"] = debug_info
