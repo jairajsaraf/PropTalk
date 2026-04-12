@@ -39,10 +39,14 @@ def _parse_sse_stream(body: str) -> str:
     chunks = []
     for line in body.splitlines():
         line = line.strip()
-        if not line.startswith("data: "):
+        # Accept both "data: " and "data:" (compact SSE format)
+        if line.startswith("data: "):
+            payload = line[6:]
+        elif line.startswith("data:"):
+            payload = line[5:]
+        else:
             continue
-        payload = line[len("data: "):]
-        if payload == "[DONE]":
+        if payload.strip() == "[DONE]":
             break
         try:
             data = json.loads(payload)
@@ -152,7 +156,7 @@ def query_llm(
     content_type = resp.headers.get("content-type", "")
 
     # Handle SSE streaming response (text/event-stream)
-    if "text/event-stream" in content_type or resp.text.lstrip().startswith("data: "):
+    if "text/event-stream" in content_type or resp.text.lstrip().startswith("data:"):
         print("[LLM DEBUG] Detected SSE stream response, parsing chunks...")
         debug_info["response_format"] = "sse_stream"
         content = _parse_sse_stream(resp.text)
