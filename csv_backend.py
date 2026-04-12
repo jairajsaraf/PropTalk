@@ -9,6 +9,8 @@ import re
 
 import pandas as pd
 
+from config import TABLE_REGISTRY
+
 try:
     import streamlit as st
     HAS_STREAMLIT = True
@@ -93,9 +95,9 @@ class CsvBackend:
 # Legacy module-level functions (used by existing code during transition)
 # ---------------------------------------------------------------------------
 
-DATASETS = {
-    "Deed Transactions": "deed_transactions_sample.csv",
-    "HAR Listings": "har_listings_sample.csv",
+# Derived from config.TABLE_REGISTRY — only tables with CSV fallbacks
+DATASETS: dict[str, str] = {
+    t.display_name: t.csv_filename for t in TABLE_REGISTRY if t.csv_filename
 }
 
 
