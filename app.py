@@ -199,6 +199,7 @@ if question:
     validation_result = None
     result_df = None
     error_msg = None
+    query_elapsed = 0.0
 
     code_key = "sql" if mode == "sql" else "pandas_code"
 
@@ -233,6 +234,7 @@ if question:
 
             if not error_msg:
                 status.update(label="Executing query...", state="running")
+                query_start = time.time()
                 try:
                     if mode == "sql":
                         result_df = db.execute_query(generated_code)
@@ -241,6 +243,7 @@ if question:
                         result_df = csv_backend.execute_pandas(df, generated_code)
                 except Exception as e:
                     error_msg = f"Execution error: {e}"
+                query_elapsed = time.time() - query_start
 
         elapsed = time.time() - start_time
 
@@ -291,8 +294,9 @@ if question:
             code_lang = "sql" if mode == "sql" else "python"
             st.code(generated_code or "N/A", language=code_lang)
         with col2:
-            st.markdown("**Execution Time:**")
-            st.write(f"{elapsed:.2f}s")
+            st.markdown("**Timing:**")
+            llm_time = llm_response.get("_debug", {}).get("llm_elapsed", 0) if llm_response else 0
+            st.write(f"LLM: {llm_time:.1f}s | Query: {query_elapsed:.1f}s | Total: {elapsed:.1f}s")
 
             if validation_result:
                 st.markdown("**Validation:**")
