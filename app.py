@@ -203,9 +203,10 @@ if examples:
 if question:
     code_key = "sql" if mode == "sql" else "pandas_code"
 
-    # Use cached result if same question (avoids re-executing on download/rerun)
+    # Use cached result if same question + context (avoids re-executing on download/rerun)
+    cache_key = (question, selected_table_id, selected_model)
     cached = st.session_state.last_result
-    if cached and cached.get("question") == question:
+    if cached and cached.get("cache_key") == cache_key:
         llm_response = cached["llm_response"]
         generated_code = cached["generated_code"]
         validation_result = cached["validation_result"]
@@ -273,7 +274,7 @@ if question:
 
         # Cache result for reruns (download button, etc.)
         st.session_state.last_result = {
-            "question": question,
+            "cache_key": cache_key,
             "llm_response": llm_response,
             "generated_code": generated_code,
             "validation_result": validation_result,
