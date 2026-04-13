@@ -207,10 +207,12 @@ if question:
     # Only serve cache for successful, completed runs
     cache_key = (question, selected_table_id, selected_model, mode)
     cached = st.session_state.last_result
-    if (cached
-            and cached.get("cache_key") == cache_key
-            and not cached.get("error_msg")
-            and cached.get("result_df") is not None):
+    use_cache = (cached
+                 and cached.get("cache_key") == cache_key
+                 and not cached.get("error_msg")
+                 and cached.get("result_df") is not None)
+
+    if use_cache:
         llm_response = cached["llm_response"]
         generated_code = cached["generated_code"]
         validation_result = cached["validation_result"]
@@ -218,6 +220,10 @@ if question:
         error_msg = cached["error_msg"]
         elapsed = cached["elapsed"]
         query_elapsed = cached["query_elapsed"]
+
+        if st.button("Re-run query", key="rerun_query"):
+            st.session_state.last_result = None
+            st.rerun()
     else:
         start_time = time.time()
         llm_response = None
