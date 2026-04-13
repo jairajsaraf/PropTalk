@@ -85,6 +85,7 @@ with st.sidebar:
     available_tables = backend.get_tables()
     table_display_names = [t["display_name"] for t in available_tables]
     table_ids = {t["display_name"]: t["table_id"] for t in available_tables}
+    table_display_by_id = {t["table_id"]: t["display_name"] for t in available_tables}
 
     if mode == "sql":
         selected_display = st.selectbox("Select table", table_display_names, key="table_selector")
@@ -129,8 +130,9 @@ with st.sidebar:
                 ):
                     st.session_state.current_question = entry["question"]
                     # Restore dataset/model context from the history entry
-                    if entry.get("table_id") in table_display_names:
-                        st.session_state.table_selector = entry["table_id"]
+                    display = table_display_by_id.get(entry.get("table_id"))
+                    if display and display in table_display_names:
+                        st.session_state.table_selector = display
                     if entry.get("model"):
                         model_name = next(
                             (m["name"] for m in config.AVAILABLE_MODELS
