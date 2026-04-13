@@ -204,9 +204,10 @@ if question:
     code_key = "sql" if mode == "sql" else "pandas_code"
 
     # Use cached result if same question + context (avoids re-executing on download/rerun)
-    cache_key = (question, selected_table_id, selected_model)
+    # Only serve cache for successful runs — failed results are not cached so retries work
+    cache_key = (question, selected_table_id, selected_model, mode)
     cached = st.session_state.last_result
-    if cached and cached.get("cache_key") == cache_key:
+    if cached and cached.get("cache_key") == cache_key and not cached.get("error_msg"):
         llm_response = cached["llm_response"]
         generated_code = cached["generated_code"]
         validation_result = cached["validation_result"]
