@@ -26,7 +26,7 @@ To connect to the Center's SQL Server, add these to your `.env`:
 
 ```bash
 SQL_SERVER=your_server
-SQL_DATABASE=DataMart1
+SQL_DATABASE=your_db
 SQL_TRUSTED_CONNECTION=yes
 ```
 
