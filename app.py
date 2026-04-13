@@ -111,8 +111,18 @@ with st.sidebar:
     # Query history
     with st.expander("📜 Query History"):
         if st.session_state.query_history:
+            if st.button("Clear History", key="clear_history"):
+                st.session_state.query_history = []
+                st.rerun()
             for i, entry in enumerate(reversed(st.session_state.query_history)):
-                st.markdown(f"**{len(st.session_state.query_history) - i}.** {entry['question']}")
+                idx = len(st.session_state.query_history) - 1 - i
+                if st.button(
+                    f"**{idx + 1}.** {entry['question']}",
+                    key=f"history_{idx}",
+                    use_container_width=True,
+                ):
+                    st.session_state.current_question = entry["question"]
+                    st.rerun()
                 code_key = "sql" if "sql" in entry else "pandas_code"
                 if code_key in entry:
                     st.code(entry[code_key], language="sql" if code_key == "sql" else "python")
@@ -297,9 +307,13 @@ if question:
                 st.warning("Response was not standard OpenAI format")
             st.code(debug_info.get("raw_body", "N/A"), language=None)
 
-    # Save to history
+    # Save to history (dedup: remove prior entry with same question text)
     history_entry = {"question": question}
     history_entry[code_key] = generated_code or ""
     if llm_response:
         history_entry["explanation"] = llm_response.get("explanation", "")
+    st.session_state.query_history = [
+        e for e in st.session_state.query_history
+        if e["question"].lower() != question.lower()
+    ]
     st.session_state.query_history.append(history_entry)
