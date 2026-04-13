@@ -204,10 +204,13 @@ if question:
     code_key = "sql" if mode == "sql" else "pandas_code"
 
     # Use cached result if same question + context (avoids re-executing on download/rerun)
-    # Only serve cache for successful runs — failed results are not cached so retries work
+    # Only serve cache for successful, completed runs
     cache_key = (question, selected_table_id, selected_model, mode)
     cached = st.session_state.last_result
-    if cached and cached.get("cache_key") == cache_key and not cached.get("error_msg"):
+    if (cached
+            and cached.get("cache_key") == cache_key
+            and not cached.get("error_msg")
+            and cached.get("result_df") is not None):
         llm_response = cached["llm_response"]
         generated_code = cached["generated_code"]
         validation_result = cached["validation_result"]
@@ -352,13 +355,19 @@ if question:
                 st.warning("Response was not standard OpenAI format")
             st.code(debug_info.get("raw_body", "N/A"), language=None)
 
-    # Save to history (dedup: remove prior entry with same question text)
-    history_entry = {"question": question}
-    history_entry[code_key] = generated_code or ""
+    # Save to history (dedup by question + dataset + model, not just question text)
+    history_entry = {
+        "question": question,
+        "table_id": selected_table_id,
+        "model": selected_model,
+        code_key: generated_code or "",
+    }
     if llm_response:
         history_entry["explanation"] = llm_response.get("explanation", "")
     st.session_state.query_history = [
         e for e in st.session_state.query_history
-        if e["question"].lower() != question.lower()
+        if not (e["question"].lower() == question.lower()
+                and e.get("table_id") == selected_table_id
+                and e.get("model") == selected_model)
     ]
     st.session_state.query_history.append(history_entry)
