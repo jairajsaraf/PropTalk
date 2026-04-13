@@ -172,14 +172,14 @@ question = st.text_input(
     label_visibility="collapsed",
 )
 
-# Example question buttons
+# Example question buttons (keyed by dataset so they re-render on switch)
 examples = config.get_example_questions(selected_display)
 if examples:
     st.caption("**Try an example:**")
     cols = st.columns(len(examples))
     for i, example in enumerate(examples):
         with cols[i]:
-            if st.button(example, key=f"example_{i}", use_container_width=True):
+            if st.button(example, key=f"example_{selected_table_id}_{i}", use_container_width=True):
                 st.session_state.current_question = example
                 st.rerun()
 
