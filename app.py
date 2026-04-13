@@ -36,6 +36,8 @@ if "current_question" not in st.session_state:
     st.session_state.current_question = ""
 if "query_input" not in st.session_state:
     st.session_state.query_input = ""
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None  # cached {question, response, ...}
 
 # ---------------------------------------------------------------------------
 # Backend initialization
@@ -116,6 +118,7 @@ with st.sidebar:
             if st.button("Clear History", key="clear_history"):
                 st.session_state.query_history = []
                 st.session_state.query_input = ""
+                st.session_state.last_result = None
                 st.rerun()
             for i, entry in enumerate(reversed(st.session_state.query_history)):
                 idx = len(st.session_state.query_history) - 1 - i
@@ -198,64 +201,87 @@ if examples:
 # ---------------------------------------------------------------------------
 
 if question:
-    start_time = time.time()
-    llm_response = None
-    generated_code = None
-    validation_result = None
-    result_df = None
-    error_msg = None
-    query_elapsed = 0.0
-
     code_key = "sql" if mode == "sql" else "pandas_code"
 
-    with st.status("Generating query...", expanded=True, state="running") as status:
-        # Step 1: LLM query generation
-        try:
-            llm_response = llm.query_llm(
-                question, schema_info, mode, table_name_for_prompt, selected_model
-            )
-            generated_code = llm_response.get(code_key, "")
-        except ValueError as e:
-            error_msg = f"Configuration error: {e}"
-        except Exception as e:
-            error_msg = f"LLM error: {e}"
+    # Use cached result if same question (avoids re-executing on download/rerun)
+    cached = st.session_state.last_result
+    if cached and cached.get("question") == question:
+        llm_response = cached["llm_response"]
+        generated_code = cached["generated_code"]
+        validation_result = cached["validation_result"]
+        result_df = cached["result_df"]
+        error_msg = cached["error_msg"]
+        elapsed = cached["elapsed"]
+        query_elapsed = cached["query_elapsed"]
+    else:
+        start_time = time.time()
+        llm_response = None
+        generated_code = None
+        validation_result = None
+        result_df = None
+        error_msg = None
+        query_elapsed = 0.0
 
-        # Step 2: Validation + Execution
-        if generated_code and not error_msg:
-            if mode == "sql":
-                status.update(label="Validating query...", state="running")
-                is_valid, sanitized, reason = validate_query(
-                    generated_code, backend.get_allowed_table_names()
+        with st.status("Generating query...", expanded=True, state="running") as status:
+            # Step 1: LLM query generation
+            try:
+                llm_response = llm.query_llm(
+                    question, schema_info, mode, table_name_for_prompt, selected_model
                 )
-                validation_result = {
-                    "is_valid": is_valid,
-                    "sanitized_query": sanitized,
-                    "rejection_reason": reason,
-                }
-                if not is_valid:
-                    error_msg = f"Query rejected: {reason}"
-                else:
-                    generated_code = sanitized
+                generated_code = llm_response.get(code_key, "")
+            except ValueError as e:
+                error_msg = f"Configuration error: {e}"
+            except Exception as e:
+                error_msg = f"LLM error: {e}"
 
-            if not error_msg:
-                status.update(label="Executing query...", state="running")
-                query_start = time.time()
-                try:
-                    if mode == "sql":
-                        result_df = db.execute_query(generated_code)
+            # Step 2: Validation + Execution
+            if generated_code and not error_msg:
+                if mode == "sql":
+                    status.update(label="Validating query...", state="running")
+                    is_valid, sanitized, reason = validate_query(
+                        generated_code, backend.get_allowed_table_names()
+                    )
+                    validation_result = {
+                        "is_valid": is_valid,
+                        "sanitized_query": sanitized,
+                        "rejection_reason": reason,
+                    }
+                    if not is_valid:
+                        error_msg = f"Query rejected: {reason}"
                     else:
-                        df = backend.load_data(selected_table_id)
-                        result_df = csv_backend.execute_pandas(df, generated_code)
-                except Exception as e:
-                    error_msg = f"Execution error: {e}"
-                query_elapsed = time.time() - query_start
+                        generated_code = sanitized
 
-        elapsed = time.time() - start_time
+                if not error_msg:
+                    status.update(label="Executing query...", state="running")
+                    query_start = time.time()
+                    try:
+                        if mode == "sql":
+                            result_df = db.execute_query(generated_code)
+                        else:
+                            df = backend.load_data(selected_table_id)
+                            result_df = csv_backend.execute_pandas(df, generated_code)
+                    except Exception as e:
+                        error_msg = f"Execution error: {e}"
+                    query_elapsed = time.time() - query_start
 
-        if error_msg:
-            status.update(label="Error", state="error", expanded=True)
-        else:
-            status.update(label=f"Done in {elapsed:.1f}s", state="complete", expanded=False)
+            elapsed = time.time() - start_time
+
+            if error_msg:
+                status.update(label="Error", state="error", expanded=True)
+            else:
+                status.update(label=f"Done in {elapsed:.1f}s", state="complete", expanded=False)
+
+        # Cache result for reruns (download button, etc.)
+        st.session_state.last_result = {
+            "question": question,
+            "llm_response": llm_response,
+            "generated_code": generated_code,
+            "validation_result": validation_result,
+            "result_df": result_df,
+            "error_msg": error_msg,
+            "elapsed": elapsed,
+            "query_elapsed": query_elapsed,
+        }
 
     # ---------------------------------------------------------------------------
     # Display results
