@@ -87,9 +87,9 @@ with st.sidebar:
     table_ids = {t["display_name"]: t["table_id"] for t in available_tables}
 
     if mode == "sql":
-        selected_display = st.selectbox("Select table", table_display_names)
+        selected_display = st.selectbox("Select table", table_display_names, key="table_selector")
     else:
-        selected_display = st.radio("Select dataset", table_display_names)
+        selected_display = st.radio("Select dataset", table_display_names, key="table_selector")
 
     selected_table_id = table_ids[selected_display]
 
@@ -98,7 +98,7 @@ with st.sidebar:
     # Model selector
     model_names = [m["name"] for m in config.AVAILABLE_MODELS]
     model_ids = {m["name"]: m["id"] for m in config.AVAILABLE_MODELS}
-    selected_model_name = st.selectbox("LLM Model", model_names)
+    selected_model_name = st.selectbox("LLM Model", model_names, key="model_selector")
     selected_model = model_ids[selected_model_name]
 
     st.divider()
@@ -128,6 +128,17 @@ with st.sidebar:
                     use_container_width=True,
                 ):
                     st.session_state.current_question = entry["question"]
+                    # Restore dataset/model context from the history entry
+                    if entry.get("table_id") in table_display_names:
+                        st.session_state.table_selector = entry["table_id"]
+                    if entry.get("model"):
+                        model_name = next(
+                            (m["name"] for m in config.AVAILABLE_MODELS
+                             if m["id"] == entry["model"]),
+                            None,
+                        )
+                        if model_name:
+                            st.session_state.model_selector = model_name
                     st.rerun()
                 code_key = "sql" if "sql" in entry else "pandas_code"
                 if code_key in entry:
