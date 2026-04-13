@@ -127,6 +127,7 @@ def query_llm(
     }
 
     # Retry once on timeout/connection error
+    llm_start = time.time()
     for attempt in range(2):
         try:
             resp = requests.post(url, headers=headers, json=payload, timeout=60)
@@ -136,6 +137,7 @@ def query_llm(
                 time.sleep(2)
                 continue
             raise
+    llm_elapsed = time.time() - llm_start
 
     # --- Debug logging (prints to terminal) ---
     print(f"[LLM DEBUG] Status: {resp.status_code}")
@@ -147,6 +149,7 @@ def query_llm(
         "status_code": resp.status_code,
         "content_type": resp.headers.get("content-type", "N/A"),
         "raw_body": resp.text[:2000],
+        "llm_elapsed": round(llm_elapsed, 2),
     }
 
     resp.raise_for_status()
