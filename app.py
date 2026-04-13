@@ -202,9 +202,8 @@ if question:
 
     code_key = "sql" if mode == "sql" else "pandas_code"
 
-    # Step 1: LLM query generation
-    with st.status("Processing your question...", expanded=True) as status:
-        st.write("🤖 Generating query...")
+    with st.status("Generating query...", expanded=True, state="running") as status:
+        # Step 1: LLM query generation
         try:
             llm_response = llm.query_llm(
                 question, schema_info, mode, table_name_for_prompt, selected_model
@@ -215,10 +214,10 @@ if question:
         except Exception as e:
             error_msg = f"LLM error: {e}"
 
-        # Step 2: Validation + Execution via backend
+        # Step 2: Validation + Execution
         if generated_code and not error_msg:
             if mode == "sql":
-                st.write("🔍 Validating query...")
+                status.update(label="Validating query...", state="running")
                 is_valid, sanitized, reason = validate_query(
                     generated_code, backend.get_allowed_table_names()
                 )
@@ -233,7 +232,7 @@ if question:
                     generated_code = sanitized
 
             if not error_msg:
-                st.write("⚡ Executing query...")
+                status.update(label="Executing query...", state="running")
                 try:
                     if mode == "sql":
                         result_df = db.execute_query(generated_code)
@@ -246,9 +245,9 @@ if question:
         elapsed = time.time() - start_time
 
         if error_msg:
-            status.update(label="Error", state="error")
+            status.update(label="Error", state="error", expanded=True)
         else:
-            status.update(label=f"Done in {elapsed:.1f}s", state="complete")
+            status.update(label=f"Done in {elapsed:.1f}s", state="complete", expanded=False)
 
     # ---------------------------------------------------------------------------
     # Display results
