@@ -269,6 +269,15 @@ if question:
             st.markdown(f"### 📋 Results ({len(result_df):,} rows)")
             st.dataframe(result_df, use_container_width=True, height=400)
 
+            # Download button
+            csv_data = result_df.to_csv(index=False)
+            st.download_button(
+                label="Download results as CSV",
+                data=csv_data,
+                file_name="proptalk_results.csv",
+                mime="text/csv",
+            )
+
             # Explanation
             explanation = llm_response.get("explanation", "") if llm_response else ""
             if explanation:
