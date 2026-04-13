@@ -34,6 +34,8 @@ if "query_history" not in st.session_state:
     st.session_state.query_history = []
 if "current_question" not in st.session_state:
     st.session_state.current_question = ""
+if "query_input" not in st.session_state:
+    st.session_state.query_input = ""
 
 # ---------------------------------------------------------------------------
 # Backend initialization
@@ -113,6 +115,7 @@ with st.sidebar:
         if st.session_state.query_history:
             if st.button("Clear History", key="clear_history"):
                 st.session_state.query_history = []
+                st.session_state.query_input = ""
                 st.rerun()
             for i, entry in enumerate(reversed(st.session_state.query_history)):
                 idx = len(st.session_state.query_history) - 1 - i
@@ -166,10 +169,17 @@ else:
 
 # Question input
 st.markdown("### 💬 Ask a question about the data")
+
+# Sync current_question into the text input widget before rendering
+if st.session_state.current_question:
+    st.session_state.query_input = st.session_state.current_question
+    st.session_state.current_question = ""
+
 question = st.text_input(
     "Type your question in plain English:",
-    placeholder=f'e.g., "Show me the top 10 cities by transaction volume"',
+    placeholder='e.g., "Show me the top 10 cities by transaction volume"',
     label_visibility="collapsed",
+    key="query_input",
 )
 
 # Example question buttons (keyed by dataset so they re-render on switch)
@@ -182,11 +192,6 @@ if examples:
             if st.button(example, key=f"example_{selected_table_id}_{i}", use_container_width=True):
                 st.session_state.current_question = example
                 st.rerun()
-
-# Use example question if one was clicked
-if st.session_state.current_question and not question:
-    question = st.session_state.current_question
-    st.session_state.current_question = ""
 
 # ---------------------------------------------------------------------------
 # Query execution flow
