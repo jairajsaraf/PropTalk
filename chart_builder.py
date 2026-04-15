@@ -133,11 +133,10 @@ def build_chart(df: pd.DataFrame, chart_config: dict | None) -> go.Figure | None
         return fig
 
     except Exception:
-        # If chart generation fails, try auto-detection as last resort
+        # If chart generation fails, try auto-detection as last resort.
+        # The recursive call re-enters this same try/except, so a second
+        # failure propagates to its None return — no nested handler needed.
         auto_config = _detect_chart_type(df)
         if auto_config and auto_config != chart_config:
-            try:
-                return build_chart(df, auto_config)
-            except Exception:
-                return None
+            return build_chart(df, auto_config)
         return None
