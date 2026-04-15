@@ -89,50 +89,51 @@ class CsvBackend:
         return _load_data(filename, date_cols)
 
 
-# Patterns that should never appear in LLM-generated pandas code
+# Patterns that should never appear in LLM-generated pandas code —
+# imports, I/O, dynamic attribute access, network, and execution primitives.
 _BLOCKED_PATTERNS = [
-    r"\bimport\b",        # no imports
-    r"\bopen\s*\(",       # no file access
-    r"\bos\b",            # no os module
-    r"\bsys\b",           # no sys module
-    r"\bsubprocess\b",    # no subprocess
-    r"\b__\w+__\b",       # no dunder attributes (__class__, __import__, etc.)
-    r"\beval\s*\(",       # no eval
-    r"\bexec\s*\(",       # no nested exec
-    r"\bcompile\s*\(",    # no compile
-    r"\bglobals\s*\(",    # no globals access
-    r"\blocals\s*\(",     # no locals access
-    r"\bgetattr\s*\(",    # no dynamic attribute access
-    r"\bsetattr\s*\(",    # no dynamic attribute setting
-    r"\bdelattr\s*\(",    # no dynamic attribute deletion
-    r"\bbreakpoint\s*\(", # no debugger
-    r"\bsocket\b",        # no network access
-    r"\brequests\b",      # no HTTP requests
-    r"\burllib\b",        # no URL access
-    r"\.to_csv\s*\(",       # no writing files
-    r"\.to_excel\s*\(",     # no writing files
-    r"\.to_json\s*\(",      # no writing files
-    r"\.to_sql\s*\(",       # no writing to databases
-    r"\.to_parquet\s*\(",   # no writing files
-    r"\.to_pickle\s*\(",    # no writing pickle files
-    r"\.to_hdf\s*\(",       # no writing HDF5 files
-    r"\.to_feather\s*\(",   # no writing feather files
-    r"\.to_stata\s*\(",     # no writing Stata files
-    r"\.to_gbq\s*\(",       # no writing to BigQuery
-    r"\.to_latex\s*\(",     # no writing LaTeX files
-    r"\.to_html\s*\(",      # no writing HTML files
-    r"\.to_clipboard\s*\(", # no writing to clipboard
-    r"\.to_markdown\s*\(",  # no writing markdown files
-    r"\bread_pickle\b",    # no reading pickle files (unsafe deserialization)
-    r"\bread_csv\b",      # no reading files via pd.read_csv
-    r"\bread_excel\b",    # no reading files via pd.read_excel
-    r"\bread_json\b",     # no reading files via pd.read_json
-    r"\bread_sql\b",      # no reading from databases
-    r"\bread_parquet\b",  # no reading parquet files
-    r"\bread_html\b",     # no reading HTML
-    r"\bread_fwf\b",      # no reading fixed-width files
-    r"\bread_clipboard\b", # no reading clipboard
-    r"\bread_table\b",    # no reading tables from files
+    r"\bimport\b",
+    r"\bopen\s*\(",  # file access
+    r"\bos\b",
+    r"\bsys\b",
+    r"\bsubprocess\b",
+    r"\b__\w+__\b",  # dunder attributes (__class__, __import__, etc.)
+    r"\beval\s*\(",
+    r"\bexec\s*\(",
+    r"\bcompile\s*\(",
+    r"\bglobals\s*\(",
+    r"\blocals\s*\(",
+    r"\bgetattr\s*\(",
+    r"\bsetattr\s*\(",
+    r"\bdelattr\s*\(",
+    r"\bbreakpoint\s*\(",
+    r"\bsocket\b",
+    r"\brequests\b",
+    r"\burllib\b",
+    r"\.to_csv\s*\(",
+    r"\.to_excel\s*\(",
+    r"\.to_json\s*\(",
+    r"\.to_sql\s*\(",
+    r"\.to_parquet\s*\(",
+    r"\.to_pickle\s*\(",
+    r"\.to_hdf\s*\(",
+    r"\.to_feather\s*\(",
+    r"\.to_stata\s*\(",
+    r"\.to_gbq\s*\(",
+    r"\.to_latex\s*\(",
+    r"\.to_html\s*\(",
+    r"\.to_clipboard\s*\(",
+    r"\.to_markdown\s*\(",
+    r"\bread_pickle\b",  # unsafe deserialization
+    r"\bread_csv\b",
+    r"\bread_excel\b",
+    r"\bread_json\b",
+    r"\bread_sql\b",
+    r"\bread_parquet\b",
+    r"\bread_html\b",
+    r"\bread_fwf\b",
+    r"\bread_clipboard\b",
+    r"\bread_table\b",
 ]
 
 
