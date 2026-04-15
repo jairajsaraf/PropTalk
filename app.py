@@ -162,7 +162,6 @@ if mode == "pandas":
         icon="🟡",
     )
 
-# Check for API key
 api_key = os.getenv("TAMU_AI_API_KEY")
 if not api_key:
     st.error(
@@ -316,17 +315,14 @@ if question:
         if result_df.empty:
             st.warning("No rows matched. Try broadening your filters.")
         else:
-            # Chart
             chart_config = llm_response.get("chart_config") if llm_response else None
             fig = build_chart(result_df, chart_config)
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
 
-            # Results table
             st.markdown(f"### 📋 Results ({len(result_df):,} rows)")
             st.dataframe(result_df, use_container_width=True, height=400)
 
-            # Download button
             csv_data = result_df.to_csv(index=False)
             st.download_button(
                 label="Download results as CSV",
@@ -335,12 +331,10 @@ if question:
                 mime="text/csv",
             )
 
-            # Explanation
             explanation = llm_response.get("explanation", "") if llm_response else ""
             if explanation:
                 st.info(f"💡 {explanation}")
 
-    # Debug expander
     with st.expander("🔍 Debug Details"):
         col1, col2 = st.columns(2)
         with col1:
