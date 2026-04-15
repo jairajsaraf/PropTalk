@@ -96,7 +96,7 @@ def query_llm(
 
     Args:
         question: The user's plain-English question.
-        schema_info: Formatted schema string (from db.get_schema or csv_backend.get_schema).
+        schema_info: Formatted schema string (from backend.get_schema).
         mode: "sql" or "csv".
         table_name: Display name or fully qualified table name.
         model: LLM model to use.
