@@ -143,9 +143,9 @@ with st.sidebar:
                         if model_name:
                             st.session_state.model_selector = model_name
                     st.rerun()
-                code_key = "sql" if "sql" in entry else "pandas_code"
-                if code_key in entry:
-                    st.code(entry[code_key], language="sql" if code_key == "sql" else "python")
+                entry_code_key = "sql" if "sql" in entry else "pandas_code"
+                if entry_code_key in entry:
+                    st.code(entry[entry_code_key], language="sql" if entry_code_key == "sql" else "python")
         else:
             st.caption("No queries yet.")
 
