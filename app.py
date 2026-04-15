@@ -3,7 +3,6 @@
 import os
 import time
 
-import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -67,6 +66,8 @@ def _build_backend():
 
 backend = _build_backend()
 mode = backend.get_query_language()  # "sql" or "pandas"
+code_key = "sql" if mode == "sql" else "pandas_code"
+code_lang = "sql" if mode == "sql" else "python"
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -214,8 +215,6 @@ if examples:
 # ---------------------------------------------------------------------------
 
 if question:
-    code_key = "sql" if mode == "sql" else "pandas_code"
-
     # Use cached result if same question + context (avoids re-executing on download/rerun)
     # Only serve cache for successful, completed runs
     cache_key = (question, selected_table_id, selected_model, mode)
@@ -346,7 +345,6 @@ if question:
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Generated Code:**")
-            code_lang = "sql" if mode == "sql" else "python"
             st.code(generated_code or "N/A", language=code_lang)
         with col2:
             st.markdown("**Timing:**")

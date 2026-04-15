@@ -9,8 +9,6 @@ import re
 
 import pandas as pd
 
-from config import TABLE_REGISTRY
-
 try:
     import streamlit as st
     HAS_STREAMLIT = True
@@ -89,33 +87,6 @@ class CsvBackend:
             raise ValueError(f"Unknown dataset: {table_id}")
         date_cols = DATE_COLUMNS.get(table_id, [])
         return _load_data(filename, date_cols)
-
-
-# ---------------------------------------------------------------------------
-# Legacy module-level functions (used by existing code during transition)
-# ---------------------------------------------------------------------------
-
-# Derived from config.TABLE_REGISTRY — only tables with CSV fallbacks
-DATASETS: dict[str, str] = {
-    t.display_name: t.csv_filename for t in TABLE_REGISTRY if t.csv_filename
-}
-
-
-def get_dataset_names() -> list[str]:
-    return list(DATASETS.keys())
-
-
-def load_data(dataset_name: str) -> pd.DataFrame:
-    filename = DATASETS.get(dataset_name)
-    if not filename:
-        raise ValueError(f"Unknown dataset: {dataset_name}")
-    date_cols = DATE_COLUMNS.get(dataset_name, [])
-    return _load_data(filename, date_cols)
-
-
-def get_schema(dataset_name: str) -> str:
-    df = load_data(dataset_name)
-    return _get_schema_str(df)
 
 
 # Patterns that should never appear in LLM-generated pandas code
