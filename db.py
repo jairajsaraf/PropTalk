@@ -159,7 +159,7 @@ def get_schema(table_name: str, conn=None) -> str:
             sample_query = f"SELECT TOP 3 DISTINCT [{col_name}] FROM {table_name} WHERE [{col_name}] IS NOT NULL"
             samples = pd.read_sql(sample_query, conn)
             sample_vals = ", ".join(str(v) for v in samples.iloc[:, 0].tolist())
-        except Exception:
+        except pyodbc.Error:
             sample_vals = ""
 
         line = f"- {col_name} ({type_str}, {nullable})"
