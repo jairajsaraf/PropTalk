@@ -137,7 +137,6 @@ def get_schema(table_name: str, conn=None) -> str:
         db_name = os.getenv("SQL_DATABASE", "DataMart1")
         schema_name = "dbo"
 
-    # Query column metadata
     col_query = f"""
     SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
     FROM [{db_name}].INFORMATION_SCHEMA.COLUMNS
@@ -154,12 +153,15 @@ def get_schema(table_name: str, conn=None) -> str:
         max_len = row.get("CHARACTER_MAXIMUM_LENGTH")
         type_str = f"{data_type}({int(max_len)})" if pd.notna(max_len) and max_len else data_type
 
-        # Get sample values
         try:
             sample_query = f"SELECT TOP 3 DISTINCT [{col_name}] FROM {table_name} WHERE [{col_name}] IS NOT NULL"
             samples = pd.read_sql(sample_query, conn)
             sample_vals = ", ".join(str(v) for v in samples.iloc[:, 0].tolist())
         except Exception:
+            # Best-effort per-column sample enrichment: pandas wraps driver
+            # errors in several types (pyodbc.Error, pandas.errors.DatabaseError,
+            # etc.) and we'd rather omit samples for one column than abort
+            # schema generation for the whole table.
             sample_vals = ""
 
         line = f"- {col_name} ({type_str}, {nullable})"

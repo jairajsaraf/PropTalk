@@ -3,7 +3,6 @@
 import os
 import time
 
-import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -67,6 +66,8 @@ def _build_backend():
 
 backend = _build_backend()
 mode = backend.get_query_language()  # "sql" or "pandas"
+code_key = "sql" if mode == "sql" else "pandas_code"
+code_lang = "sql" if mode == "sql" else "python"
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -142,9 +143,9 @@ with st.sidebar:
                         if model_name:
                             st.session_state.model_selector = model_name
                     st.rerun()
-                code_key = "sql" if "sql" in entry else "pandas_code"
-                if code_key in entry:
-                    st.code(entry[code_key], language="sql" if code_key == "sql" else "python")
+                entry_code_key = "sql" if "sql" in entry else "pandas_code"
+                if entry_code_key in entry:
+                    st.code(entry[entry_code_key], language="sql" if entry_code_key == "sql" else "python")
         else:
             st.caption("No queries yet.")
 
@@ -161,7 +162,6 @@ if mode == "pandas":
         icon="🟡",
     )
 
-# Check for API key
 api_key = os.getenv("TAMU_AI_API_KEY")
 if not api_key:
     st.error(
@@ -214,8 +214,6 @@ if examples:
 # ---------------------------------------------------------------------------
 
 if question:
-    code_key = "sql" if mode == "sql" else "pandas_code"
-
     # Use cached result if same question + context (avoids re-executing on download/rerun)
     # Only serve cache for successful, completed runs
     cache_key = (question, selected_table_id, selected_model, mode)
@@ -317,17 +315,14 @@ if question:
         if result_df.empty:
             st.warning("No rows matched. Try broadening your filters.")
         else:
-            # Chart
             chart_config = llm_response.get("chart_config") if llm_response else None
             fig = build_chart(result_df, chart_config)
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
 
-            # Results table
             st.markdown(f"### 📋 Results ({len(result_df):,} rows)")
             st.dataframe(result_df, use_container_width=True, height=400)
 
-            # Download button
             csv_data = result_df.to_csv(index=False)
             st.download_button(
                 label="Download results as CSV",
@@ -336,17 +331,14 @@ if question:
                 mime="text/csv",
             )
 
-            # Explanation
             explanation = llm_response.get("explanation", "") if llm_response else ""
             if explanation:
                 st.info(f"💡 {explanation}")
 
-    # Debug expander
     with st.expander("🔍 Debug Details"):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Generated Code:**")
-            code_lang = "sql" if mode == "sql" else "python"
             st.code(generated_code or "N/A", language=code_lang)
         with col2:
             st.markdown("**Timing:**")
