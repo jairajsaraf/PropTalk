@@ -100,14 +100,6 @@ TABLE_REGISTRY: list[TableConfig] = [
 ]
 
 
-AVAILABLE_MODELS: list[dict] = [
-    {"id": "Claude Sonnet 4", "name": "Claude Sonnet 4 (recommended)"},
-    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash (fastest)"},
-    {"id": "gpt-4.1", "name": "GPT-4.1"},
-    {"id": "Claude 3.7 Sonnet", "name": "Claude 3.7 Sonnet"},
-]
-
-
 def get_example_questions(display_name: str) -> list[str]:
     """Return example questions for a table by display name."""
     for table in TABLE_REGISTRY:

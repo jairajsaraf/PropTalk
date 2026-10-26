@@ -97,11 +97,10 @@ with st.sidebar:
 
     st.divider()
 
-    # Model selector
-    model_names = [m["name"] for m in config.AVAILABLE_MODELS]
-    model_ids = {m["name"]: m["id"] for m in config.AVAILABLE_MODELS}
-    selected_model_name = st.selectbox("LLM Model", model_names, key="model_selector")
-    selected_model = model_ids[selected_model_name]
+    # Model is fixed by LLM_MODEL in the environment (no selector —
+    # swapping models is a .env change, not a per-session UI choice).
+    selected_model = llm.get_model()
+    st.caption(f"LLM model: `{selected_model}`")
 
     st.divider()
 
@@ -130,18 +129,10 @@ with st.sidebar:
                     use_container_width=True,
                 ):
                     st.session_state.current_question = entry["question"]
-                    # Restore dataset/model context from the history entry
+                    # Restore dataset context from the history entry
                     display = table_display_by_id.get(entry.get("table_id"))
                     if display and display in table_display_names:
                         st.session_state.table_selector = display
-                    if entry.get("model"):
-                        model_name = next(
-                            (m["name"] for m in config.AVAILABLE_MODELS
-                             if m["id"] == entry["model"]),
-                            None,
-                        )
-                        if model_name:
-                            st.session_state.model_selector = model_name
                     st.rerun()
                 entry_code_key = "sql" if "sql" in entry else "pandas_code"
                 if entry_code_key in entry:

@@ -9,13 +9,23 @@ import requests
 
 from prompts import get_sql_prompt, get_csv_prompt
 
-from config import AVAILABLE_MODELS as _MODELS_CONFIG
+DEFAULT_API_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
-DEFAULT_MODEL = _MODELS_CONFIG[0]["id"]
-# List of model ID strings for backwards compatibility
-AVAILABLE_MODELS = [m["id"] for m in _MODELS_CONFIG]
 
-API_BASE = "https://llm.example.com/v1"
+def _get_api_base() -> str:
+    """Return the configured LLM API base URL (any OpenAI-compatible endpoint)."""
+    return os.getenv("LLM_API_BASE", DEFAULT_API_BASE).rstrip("/")
+
+
+def _get_model() -> str:
+    """Return the configured LLM model id."""
+    return os.getenv("LLM_MODEL", DEFAULT_MODEL)
+
+
+def get_model() -> str:
+    """Public accessor for the configured LLM model id (used by the UI)."""
+    return _get_model()
 
 
 def _get_api_key() -> str:
@@ -90,7 +100,7 @@ def query_llm(
     schema_info: str,
     mode: str,
     table_name: str,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
 ) -> dict:
     """Send a natural language question to the LLM and get a structured response.
 
@@ -99,7 +109,7 @@ def query_llm(
         schema_info: Formatted schema string (from backend.get_schema).
         mode: "sql" or "csv".
         table_name: Display name or fully qualified table name.
-        model: LLM model to use.
+        model: LLM model to use. Defaults to LLM_MODEL from the environment.
 
     Returns:
         Dict with keys: sql/pandas_code, chart_config, explanation.
@@ -109,8 +119,9 @@ def query_llm(
     else:
         system_prompt = get_csv_prompt(table_name, schema_info)
 
+    model = model or _get_model()
     api_key = _get_api_key()
-    url = f"{API_BASE}/chat/completions"
+    url = f"{_get_api_base()}/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -121,8 +132,7 @@ def query_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
-        # Claude models on Bedrock with extended thinking require temperature=1
-        "temperature": 1 if model.startswith("Claude") else 0,
+        "temperature": 0,
         "stream": False,
     }
 
@@ -139,11 +149,6 @@ def query_llm(
             raise
     llm_elapsed = time.time() - llm_start
 
-    # --- Debug logging (prints to terminal) ---
-    print(f"[LLM DEBUG] Status: {resp.status_code}")
-    print(f"[LLM DEBUG] Content-Type: {resp.headers.get('content-type', 'N/A')}")
-    print(f"[LLM DEBUG] Body (first 500 chars): {resp.text[:500]}")
-
     # Build debug info locally (not as global state) to avoid cross-session leakage
     debug_info = {
         "status_code": resp.status_code,
@@ -158,7 +163,6 @@ def query_llm(
 
     # Handle SSE streaming response (text/event-stream)
     if "text/event-stream" in content_type or resp.text.lstrip().startswith("data:"):
-        print("[LLM DEBUG] Detected SSE stream response, parsing chunks...")
         debug_info["response_format"] = "sse_stream"
         content = _parse_sse_stream(resp.text)
         if not content:
@@ -173,10 +177,10 @@ def query_llm(
         try:
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
+            debug_info["usage"] = data.get("usage")
             debug_info["response_format"] = "openai_json"
         except (json.JSONDecodeError, KeyError, IndexError, TypeError):
             # Response isn't standard OpenAI format — log full body and use raw text
-            print(f"[LLM DEBUG] Non-standard response. Full body:\n{resp.text}")
             debug_info["parse_error"] = True
             debug_info["raw_body"] = resp.text[:5000]
             debug_info["response_format"] = "raw_text"
