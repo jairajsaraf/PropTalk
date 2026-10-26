@@ -16,7 +16,7 @@ np.random.seed(42)
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 N_DEED = 5000
-N_HAR = 5000
+N_MLS = 5000
 
 # ---------------------------------------------------------------------------
 # City / geography configuration
@@ -159,16 +159,16 @@ def generate_deed_transactions() -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def generate_har_listings() -> pd.DataFrame:
+def generate_mls_listings() -> pd.DataFrame:
     """Generate ~5000 synthetic MLS listing records."""
     rng = np.random.default_rng(43)
 
     cities = list(HOUSTON_AREA_CITIES.keys())
     weights = [HOUSTON_AREA_CITIES[c][0] for c in cities]
-    chosen_cities = rng.choice(cities, size=N_HAR, p=weights)
+    chosen_cities = rng.choice(cities, size=N_MLS, p=weights)
 
     records = []
-    for i in range(N_HAR):
+    for i in range(N_MLS):
         city = chosen_cities[i]
         _, zip_range, lat_range, lon_range = HOUSTON_AREA_CITIES[city]
 
@@ -236,10 +236,10 @@ def main():
     print(f"  -> {deed_path} ({len(deed_df)} rows)")
 
     print("Generating MLS listings...")
-    har_df = generate_har_listings()
-    har_path = os.path.join(OUTPUT_DIR, "mls_listings_sample.csv")
-    har_df.to_csv(har_path, index=False)
-    print(f"  -> {har_path} ({len(har_df)} rows)")
+    mls_df = generate_mls_listings()
+    mls_path = os.path.join(OUTPUT_DIR, "mls_listings_sample.csv")
+    mls_df.to_csv(mls_path, index=False)
+    print(f"  -> {mls_path} ({len(mls_df)} rows)")
 
     print("Done!")
 
