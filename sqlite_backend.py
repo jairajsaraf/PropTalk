@@ -84,12 +84,10 @@ def _make_authorizer(allowed_tables: set[str]):
     return authorizer
 
 
-def _build_connection() -> sqlite3.Connection:
-    """Build the shared in-memory SQLite engine from config.TABLE_REGISTRY,
-    load the synthetic CSVs into it, and lock it down.
-
-    Cached as a Streamlit resource so it's built once per server process,
-    not re-loaded on every script rerun.
+def create_connection() -> sqlite3.Connection:
+    """Build an in-memory SQLite engine from config.TABLE_REGISTRY, load the
+    synthetic CSVs into it, and lock it down. Uncached; the app uses
+    _build_connection, which is the same function cached per process.
     """
     from config import TABLE_REGISTRY
 
@@ -107,15 +105,17 @@ def _build_connection() -> sqlite3.Connection:
     return conn
 
 
-if HAS_STREAMLIT:
-    _build_connection = st.cache_resource(_build_connection)
+# Cached as a Streamlit resource so the engine is built once per server
+# process, not re-loaded on every script rerun.
+_build_connection = st.cache_resource(create_connection) if HAS_STREAMLIT else create_connection
 
 
-def execute_query(query: str) -> pd.DataFrame:
+def execute_query(query: str, conn: sqlite3.Connection | None = None) -> pd.DataFrame:
     """Execute an already-validated SELECT query against the shared engine.
 
     Args:
         query: SQL that has already passed sql_guard.validate_query.
+        conn: Engine to run on; defaults to the shared cached connection.
 
     Returns:
         DataFrame with at most MAX_ROWS rows.
@@ -125,7 +125,7 @@ def execute_query(query: str) -> pd.DataFrame:
             execution error from the engine (including an authorizer
             denial, as defense in depth if a bad query ever reached here).
     """
-    conn = _build_connection()
+    conn = conn or _build_connection()
     deadline = time.monotonic() + QUERY_TIME_BUDGET_SECONDS
 
     def _progress() -> int:

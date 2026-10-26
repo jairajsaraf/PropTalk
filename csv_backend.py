@@ -5,6 +5,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 import pickle
+import queue
 import re
 
 import pandas as pd
@@ -161,7 +162,19 @@ def _exec_worker(code: str, df_bytes: bytes, result_queue: multiprocessing.Queue
         result_queue.put(("error", str(exc)))
 
 
-def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
+def _stop_process(proc: multiprocessing.Process) -> None:
+    """Terminate, then kill, a worker process that is still running."""
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(timeout=2)
+
+
+def execute_pandas(
+    df: pd.DataFrame, code: str, timeout: float = _EXEC_TIMEOUT
+) -> pd.DataFrame:
     """Execute a pandas expression on a copy of the DataFrame.
 
     The LLM-generated code should assign results to a variable called `result`.
@@ -172,6 +185,7 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     Args:
         df: The source DataFrame.
         code: Pandas code string from the LLM.
+        timeout: Seconds before the worker process is terminated.
 
     Returns:
         The result DataFrame.
@@ -193,23 +207,23 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
         target=_exec_worker, args=(code, df_bytes, result_queue), daemon=True
     )
     proc.start()
-    proc.join(timeout=_EXEC_TIMEOUT)
+    try:
+        # Read before joining: a child that has put a large result cannot
+        # exit until the parent drains the pipe, so join-then-read would
+        # report any result over the pipe buffer (~64 KB) as a timeout.
+        status, payload = result_queue.get(timeout=timeout)
+    except queue.Empty:
+        timed_out = proc.is_alive()
+        _stop_process(proc)
+        if timed_out:
+            raise ValueError(
+                f"Query execution timed out after {timeout} seconds. "
+                "Try a simpler query."
+            ) from None
+        raise ValueError("Execution produced no result.") from None
+    proc.join(timeout=5)
+    _stop_process(proc)
 
-    if proc.is_alive():
-        proc.terminate()
-        proc.join(timeout=5)
-        if proc.is_alive():
-            proc.kill()
-            proc.join(timeout=2)
-        raise ValueError(
-            f"Query execution timed out after {_EXEC_TIMEOUT} seconds. "
-            "Try a simpler query."
-        )
-
-    if result_queue.empty():
-        raise ValueError("Execution produced no result.")
-
-    status, payload = result_queue.get_nowait()
     if status == "error":
         raise ValueError(f"Execution error: {payload}")
 

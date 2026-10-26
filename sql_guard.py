@@ -49,21 +49,20 @@ def _cap_row_limit(sql: str) -> str:
     Handles plain 'LIMIT n', 'LIMIT n OFFSET m', and SQLite's legacy
     'LIMIT offset, n' comma form (where the *second* number is the count).
     """
-    def _cap_offset_form(m):
-        count, offset = int(m.group(1)), int(m.group(2))
-        return f"LIMIT {min(count, MAX_ROWS)} OFFSET {offset}"
+    # Pick the form by matching, not by whether a rewrite changed the text:
+    # a comma form whose count is already under the cap must not fall
+    # through to the plain rule, which would cap its offset instead.
+    if _LIMIT_OFFSET_RE.search(sql):
+        def _cap_offset_form(m):
+            count, offset = int(m.group(1)), int(m.group(2))
+            return f"LIMIT {min(count, MAX_ROWS)} OFFSET {offset}"
+        return _LIMIT_OFFSET_RE.sub(_cap_offset_form, sql, count=1)
 
-    capped = _LIMIT_OFFSET_RE.sub(_cap_offset_form, sql, count=1)
-    if capped != sql:
-        return capped
-
-    def _cap_comma_form(m):
-        offset, count = int(m.group(1)), int(m.group(2))
-        return f"LIMIT {offset}, {min(count, MAX_ROWS)}"
-
-    capped = _LIMIT_COMMA_RE.sub(_cap_comma_form, sql, count=1)
-    if capped != sql:
-        return capped
+    if _LIMIT_COMMA_RE.search(sql):
+        def _cap_comma_form(m):
+            offset, count = int(m.group(1)), int(m.group(2))
+            return f"LIMIT {offset}, {min(count, MAX_ROWS)}"
+        return _LIMIT_COMMA_RE.sub(_cap_comma_form, sql, count=1)
 
     def _cap_plain(m):
         return f"LIMIT {min(int(m.group(1)), MAX_ROWS)}"
@@ -81,7 +80,11 @@ def _extract_table_references(sql: str) -> list[str]:
     tables = []
     table_token = r"[\[\w\]\.]+"
 
-    alias = r"(?:\s+(?:AS\s+)?\w+)?"
+    # An alias must not be a keyword: otherwise "FROM t JOIN x" reads JOIN
+    # as t's alias, consumes it, and x is never checked.
+    keyword = (r"(?:JOIN|INNER|LEFT|RIGHT|FULL|CROSS|OUTER|NATURAL|ON|USING|WHERE"
+               r"|GROUP|ORDER|LIMIT|HAVING|UNION|EXCEPT|INTERSECT|WINDOW)\b")
+    alias = rf"(?:\s+(?:AS\s+)?(?!{keyword})\w+)?"
     pattern = rf"(?:FROM|JOIN)\s+({table_token}{alias}(?:\s*,\s*{table_token}{alias})*)"
     for block_match in re.finditer(pattern, sql, re.IGNORECASE):
         block = block_match.group(1)
