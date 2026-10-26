@@ -1,4 +1,4 @@
-"""Texas Real Estate Data Explorer — Natural language interface for property data."""
+"""PropTalk — Natural language interface for property data."""
 
 import os
 import time
@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 
 import config
 import csv_backend
-import db
 import llm
+import sqlite_backend
 from chart_builder import build_chart
 from sql_guard import validate_query
 
@@ -20,7 +20,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Texas Real Estate Data Explorer",
+    page_title="PropTalk",
     page_icon="🏠",
     layout="wide",
 )
@@ -39,46 +39,30 @@ if "last_result" not in st.session_state:
     st.session_state.last_result = None  # cached {question, response, ...}
 
 # ---------------------------------------------------------------------------
-# Backend initialization
+# Backend initialization — both engines run over the same synthetic CSVs;
+# the sidebar picks which one generates and executes the query.
 # ---------------------------------------------------------------------------
 
-@st.cache_data(ttl=60)
-def detect_mode() -> str:
-    """Detect whether SQL Server is available; fall back to CSV."""
-    if db.is_available():
-        try:
-            conn = db.get_connection()
-            conn.cursor().execute("SELECT 1")
-            return "sql"
-        except Exception:
-            return "csv"
-    return "csv"
-
-
-def _build_backend():
-    """Instantiate the appropriate backend based on mode detection."""
-    mode = detect_mode()
-    if mode == "sql":
-        return db.SqlBackend(config.get_sql_tables())
-    else:
-        return csv_backend.CsvBackend(config.get_csv_tables())
-
-
-backend = _build_backend()
-mode = backend.get_query_language()  # "sql" or "pandas"
-code_key = "sql" if mode == "sql" else "pandas_code"
-code_lang = "sql" if mode == "sql" else "python"
+_BACKENDS = {
+    "sql": sqlite_backend.SqliteBackend(config.get_sqlite_tables()),
+    "pandas": csv_backend.CsvBackend(config.get_csv_tables()),
+}
 
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    # Mode indicator
-    if mode == "sql":
-        st.markdown("### 🟢 Live: SQL Server")
-    else:
-        st.markdown("### 🟡 Demo Mode: Synthetic Data")
+    st.markdown("### 🏠 PropTalk")
+    st.caption("Demo over synthetic Texas property data — no live database.")
+
+    engine_label = st.radio(
+        "Query engine", ["SQL (SQLite)", "pandas"], index=0, key="engine_selector"
+    )
+    mode = "sql" if engine_label.startswith("SQL") else "pandas"
+    backend = _BACKENDS[mode]
+    code_key = "sql" if mode == "sql" else "pandas_code"
+    code_lang = "sql" if mode == "sql" else "python"
 
     st.divider()
 
@@ -144,14 +128,7 @@ with st.sidebar:
 # Main area
 # ---------------------------------------------------------------------------
 
-st.title("🏠 Texas Real Estate Data Explorer")
-
-if mode == "pandas":
-    st.info(
-        "**Running in demo mode with synthetic data.** "
-        "To use real data, set SQL_SERVER in your .env file.",
-        icon="🟡",
-    )
+st.title("🏠 PropTalk")
 
 api_key = os.getenv("LLM_API_KEY")
 if not api_key:
@@ -170,7 +147,7 @@ except Exception as e:
 
 # Resolve the table name for prompts
 if mode == "sql":
-    table_name_for_prompt = backend.get_fq_name(selected_table_id)
+    table_name_for_prompt = backend.get_sql_table_name(selected_table_id)
 else:
     table_name_for_prompt = selected_display
 
@@ -269,7 +246,7 @@ if question:
                     query_start = time.time()
                     try:
                         if mode == "sql":
-                            result_df = db.execute_query(generated_code)
+                            result_df = sqlite_backend.execute_query(generated_code)
                         else:
                             df = backend.load_data(selected_table_id)
                             result_df = csv_backend.execute_pandas(df, generated_code)
