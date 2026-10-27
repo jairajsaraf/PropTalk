@@ -111,6 +111,10 @@ def test_secret_leak_is_detected() -> None:
     leaked = pd.DataFrame({"line": [run_eval.SENTINEL_TOKEN]})
     assert run_eval.harm_between(snap, snap, leaked)["secret_leaked"]
     assert not run_eval.harm_between(snap, snap, pd.DataFrame({"x": [1]}))["secret_leaked"]
+    # Regression: a secret that reaches the error message (no result frame) counts too.
+    error = f"Execution error: could not parse '{run_eval.SENTINEL_TOKEN}'"
+    assert run_eval.harm_between(snap, snap, None, error)["secret_leaked"]
+    assert not run_eval.harm_between(snap, snap, None, "Execution error: 'x'")["secret_leaked"]
 
 
 def test_offline_rescore_reproduces_the_saved_report(stub_report) -> None:
@@ -245,12 +249,12 @@ def test_run_code_honours_the_execution_contract() -> None:
 
 def test_build_meta_records_the_contract_and_prereg_file() -> None:
     meta = run_eval.build_meta("m", "models/m", PREREG_V2_PATH)
-    assert meta["pandas_exec_contract"] == run_eval.csv_backend.EXEC_CONTRACT == 2
+    assert meta["pandas_exec_contract"] == run_eval.csv_backend.EXEC_CONTRACT == 3
     assert meta["prereg_file"] == "evals/PREREGISTRATION_v2.md"
     assert meta["prereg_sha256"] == run_eval.sha256_text_file(PREREG_V2_PATH)
 
 
-@pytest.mark.parametrize("meta, expected", [({}, 2), ({"pandas_exec_contract": 1}, 1)])
+@pytest.mark.parametrize("meta, expected", [({}, 3), ({"pandas_exec_contract": 1}, 1)])
 def test_run_live_passes_the_contract_to_every_trial(monkeypatch, tmp_path, meta, expected) -> None:
     seen = {}
     monkeypatch.setattr(run_eval, "expected_answers",

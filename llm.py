@@ -18,14 +18,9 @@ def _get_api_base() -> str:
     return os.getenv("LLM_API_BASE", DEFAULT_API_BASE).rstrip("/")
 
 
-def _get_model() -> str:
+def get_model() -> str:
     """Return the configured LLM model id."""
     return os.getenv("LLM_MODEL", DEFAULT_MODEL)
-
-
-def get_model() -> str:
-    """Public accessor for the configured LLM model id (used by the UI)."""
-    return _get_model()
 
 
 def _get_api_key() -> str:
@@ -119,7 +114,7 @@ def query_llm(
     else:
         system_prompt = get_csv_prompt(table_name, schema_info)
 
-    model = model or _get_model()
+    model = model or get_model()
     api_key = _get_api_key()
     url = f"{_get_api_base()}/chat/completions"
     headers = {

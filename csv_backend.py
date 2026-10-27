@@ -8,6 +8,7 @@ import os
 import pickle
 import queue
 import re
+import time
 
 import pandas as pd
 
@@ -154,7 +155,9 @@ _EXEC_TIMEOUT = 30  # seconds
 # report can be re-scored under the rules it was produced with.
 #   1: no builtins at all; a result that is not a DataFrame/Series is an error.
 #   2: a small allowlist of builtins; a scalar result becomes a one-cell frame.
-EXEC_CONTRACT = 2
+#   3: one namespace for globals and locals, so lambdas, generator expressions
+#      and nested functions can see df, pd and the code's own variables.
+EXEC_CONTRACT = 3
 
 # Harmless builtins that ordinary pandas code reaches for. Deliberately absent:
 # type, object, getattr/setattr/delattr, hasattr, vars, dir, globals, locals,
@@ -174,12 +177,17 @@ def _builtins_for(contract: int) -> dict:
 
 
 def _exec_worker(code: str, df_bytes: bytes, result_queue: multiprocessing.Queue,
-                 contract: int = EXEC_CONTRACT):
+                 contract: int = EXEC_CONTRACT) -> None:
     """Worker function that runs in a subprocess to execute pandas code."""
     try:
         df = pickle.loads(df_bytes)
         namespace = {"df": df, "pd": pd}
-        exec(code, {"__builtins__": _builtins_for(contract)}, namespace)
+        builtins_env = {"__builtins__": _builtins_for(contract)}
+        if contract >= 3:
+            namespace.update(builtins_env)
+            exec(code, namespace)
+        else:  # separate globals/locals: nested scopes cannot see namespace
+            exec(code, builtins_env, namespace)
         result = namespace.get("result")
         result_queue.put(("ok", pickle.dumps(result)))
     except Exception as exc:
@@ -194,6 +202,35 @@ def _stop_process(proc: multiprocessing.Process) -> None:
         if proc.is_alive():
             proc.kill()
             proc.join(timeout=2)
+
+
+def _wait_for_result(proc: multiprocessing.Process, result_queue: multiprocessing.Queue,
+                     timeout: float) -> tuple[str, object]:
+    """Read the worker's (status, payload), reading before joining.
+
+    A child that has put a large result cannot exit until the parent drains
+    the pipe, so join-then-read would report any result over the pipe buffer
+    (~64 KB) as a timeout. Polling instead of one long get() also notices a
+    worker that died without a result (crash, OOM kill) without waiting out
+    the whole timeout.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return result_queue.get(timeout=0.2)
+        except queue.Empty:
+            if not proc.is_alive():
+                try:  # its result may have raced its exit
+                    return result_queue.get(timeout=1)
+                except queue.Empty:
+                    _stop_process(proc)
+                    raise ValueError("Execution produced no result.") from None
+            if time.monotonic() > deadline:
+                _stop_process(proc)
+                raise ValueError(
+                    f"Query execution timed out after {timeout} seconds. "
+                    "Try a simpler query."
+                ) from None
 
 
 def execute_pandas(
@@ -235,20 +272,7 @@ def execute_pandas(
         target=_exec_worker, args=(code, df_bytes, result_queue, contract), daemon=True
     )
     proc.start()
-    try:
-        # Read before joining: a child that has put a large result cannot
-        # exit until the parent drains the pipe, so join-then-read would
-        # report any result over the pipe buffer (~64 KB) as a timeout.
-        status, payload = result_queue.get(timeout=timeout)
-    except queue.Empty:
-        timed_out = proc.is_alive()
-        _stop_process(proc)
-        if timed_out:
-            raise ValueError(
-                f"Query execution timed out after {timeout} seconds. "
-                "Try a simpler query."
-            ) from None
-        raise ValueError("Execution produced no result.") from None
+    status, payload = _wait_for_result(proc, result_queue, timeout)
     proc.join(timeout=5)
     _stop_process(proc)
 

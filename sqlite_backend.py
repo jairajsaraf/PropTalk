@@ -22,6 +22,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 
 import pandas as pd
 
@@ -42,7 +43,10 @@ _MAX_VALUE_BYTES = 1_000_000  # largest string/blob any expression may produce
 _execute_lock = threading.Lock()
 
 
-def _make_authorizer(allowed_tables: set[str]):
+Authorizer = Callable[[int, str | None, str | None, str | None, str | None], int]
+
+
+def _make_authorizer(allowed_tables: set[str]) -> Authorizer:
     """Build a set_authorizer callback implementing a read-only allowlist.
 
     Anything not explicitly allowed here is denied, including writes, DDL,
@@ -50,7 +54,8 @@ def _make_authorizer(allowed_tables: set[str]):
     sqlite_master).
     """
 
-    def authorizer(action_code, arg1, arg2, db_name, trigger_name):
+    def authorizer(action_code: int, arg1: str | None, arg2: str | None,
+                   db_name: str | None, trigger_name: str | None) -> int:
         if action_code == sqlite3.SQLITE_SELECT:
             return sqlite3.SQLITE_OK
         if action_code == sqlite3.SQLITE_READ:
@@ -126,12 +131,15 @@ def execute_query(query: str, conn: sqlite3.Connection | None = None) -> pd.Data
             denial, as defense in depth if a bad query ever reached here).
     """
     conn = conn or _build_connection()
-    deadline = time.monotonic() + QUERY_TIME_BUDGET_SECONDS
-
-    def _progress() -> int:
-        return 1 if time.monotonic() > deadline else 0
 
     with _execute_lock:
+        # Start the clock after acquiring the lock, so time spent waiting for
+        # another session's query does not count against this one.
+        deadline = time.monotonic() + QUERY_TIME_BUDGET_SECONDS
+
+        def _progress() -> int:
+            return 1 if time.monotonic() > deadline else 0
+
         conn.set_progress_handler(_progress, _PROGRESS_HANDLER_STEPS)
         try:
             cursor = conn.execute(query)

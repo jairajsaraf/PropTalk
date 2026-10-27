@@ -93,13 +93,24 @@ def test_row_limit_is_added_or_capped(sql: str, expected_tail: str) -> None:
     assert _valid(sql).endswith(expected_tail)
 
 
-# --- Known gaps: the guard is fooled; the engine is the backstop. ----------
+@pytest.mark.parametrize("literal", ["'LIMIT 1'", "'%limit 50000%'", "'it''s LIMIT 999999'"])
+def test_limit_text_inside_a_string_literal_is_left_alone(literal: str) -> None:
+    """Regression: the guard used to read LIMIT inside a literal as a real
+    clause, skip adding one, and rewrite the literal's text."""
+    sanitized = _valid(f"SELECT * FROM deed_transactions WHERE buyer_name LIKE {literal}")
+    assert literal in sanitized
+    assert sanitized.endswith(f"LIMIT {MAX_ROWS}")
 
-def test_gap_limit_inside_string_literal_suppresses_row_cap() -> None:
-    """The guard sees 'LIMIT' in a literal and adds no LIMIT clause.
-    Backstop: fetchmany(MAX_ROWS) in sqlite_backend (tested there)."""
-    sanitized = _valid("SELECT * FROM deed_transactions WHERE city <> 'LIMIT 1'")
-    assert not sanitized.endswith(f"LIMIT {MAX_ROWS}")
+
+@pytest.mark.parametrize("clause", ["LIMIT -1", "LIMIT (5)", "LIMIT 5*2"])
+def test_non_numeric_limit_forms_are_not_doubled(clause: str) -> None:
+    """Regression: appending a second LIMIT made these a syntax error. The
+    engine's fetchmany(MAX_ROWS) caps them (tested in test_sqlite_backend)."""
+    sanitized = _valid(f"SELECT * FROM deed_transactions {clause}")
+    assert sanitized == f"SELECT * FROM deed_transactions {clause}"
+
+
+# --- Known gaps: the guard is fooled; the engine is the backstop. ----------
 
 
 def test_gap_double_quoted_identifier_escapes_whitelist() -> None:
@@ -111,6 +122,13 @@ def test_gap_double_quoted_identifier_escapes_whitelist() -> None:
 def test_false_positive_semicolon_in_literal() -> None:
     """Over-blocking, not a hole: a ';' inside a string is still rejected."""
     _rejected("SELECT * FROM deed_transactions WHERE city = 'A;B'")
+
+
+def test_known_flaw_double_dash_inside_a_literal_is_stripped_as_a_comment() -> None:
+    """Comment stripping does not know about string literals, so the query is
+    mangled (the engine then rejects it). Documented in README Limitations."""
+    sanitized = _valid("SELECT * FROM deed_transactions WHERE street_address = 'a--b'")
+    assert "a--b" not in sanitized
 
 
 def test_false_positive_read_only_cte_is_rejected() -> None:

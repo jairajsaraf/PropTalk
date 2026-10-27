@@ -36,15 +36,32 @@ MAX_ROWS = 10000
 _LIMIT_OFFSET_RE = re.compile(r"\bLIMIT\s+(\d+)\s+OFFSET\s+(\d+)\b", re.IGNORECASE)
 _LIMIT_COMMA_RE = re.compile(r"\bLIMIT\s+(\d+)\s*,\s*(\d+)\b", re.IGNORECASE)
 _LIMIT_PLAIN_RE = re.compile(r"\bLIMIT\s+(\d+)\b", re.IGNORECASE)
+_LIMIT_KEYWORD_RE = re.compile(r"\bLIMIT\b", re.IGNORECASE)
+_LITERAL_RE = re.compile(r"'(?:[^']|'')*'")  # single-quoted literal, '' escapes
 
 
-def _has_row_limit(sql_upper: str) -> bool:
-    """Check if the query already has a LIMIT clause."""
-    return bool(_LIMIT_PLAIN_RE.search(sql_upper))
+def _has_row_limit(sql: str) -> bool:
+    """Check for a LIMIT clause outside string literals.
+
+    Any form counts (LIMIT -1, LIMIT (5)): appending a second LIMIT would be
+    a syntax error, and the engine caps the rows it fetches regardless.
+    """
+    return bool(_LIMIT_KEYWORD_RE.search(_LITERAL_RE.sub("''", sql)))
 
 
 def _cap_row_limit(sql: str) -> str:
-    """Cap any LIMIT clause so it never returns more than MAX_ROWS rows.
+    """Cap numeric LIMIT clauses so none exceeds MAX_ROWS, leaving the text
+    of string literals untouched."""
+    parts, pos = [], 0
+    for literal in _LITERAL_RE.finditer(sql):
+        parts += [_cap_segment(sql[pos:literal.start()]), literal.group(0)]
+        pos = literal.end()
+    parts.append(_cap_segment(sql[pos:]))
+    return "".join(parts)
+
+
+def _cap_segment(sql: str) -> str:
+    """Cap a LIMIT in SQL text that contains no string literal.
 
     Handles plain 'LIMIT n', 'LIMIT n OFFSET m', and SQLite's legacy
     'LIMIT offset, n' comma form (where the *second* number is the count).
@@ -150,7 +167,7 @@ def validate_query(sql: str, allowed_tables: list[str]) -> tuple[bool, str, str]
             return False, "", f"Table not in whitelist: {table_ref}"
 
     # Enforce row limit: inject LIMIT if missing, or cap an existing one.
-    if not _has_row_limit(upper):
+    if not _has_row_limit(normalized):
         normalized = f"{normalized} LIMIT {MAX_ROWS}"
     else:
         normalized = _cap_row_limit(normalized)

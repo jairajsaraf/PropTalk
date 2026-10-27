@@ -106,8 +106,66 @@ def test_contract_1_reproduces_the_original_behaviour(deed_df) -> None:
     assert len(out) == 3
 
 
-def test_current_contract_is_2() -> None:
-    assert csv_backend.EXEC_CONTRACT == 2
+def test_current_contract_is_3() -> None:
+    assert csv_backend.EXEC_CONTRACT == 3
+
+
+NESTED_SCOPE_CODE = [
+    "result = df['sale_amount'].head(3).apply(lambda x: pd.isna(x)).to_frame()",
+    "result = pd.DataFrame({'n': [sum(df.loc[i, 'sale_amount'] for i in range(2))]})",
+    "t = 2\nresult = df['sale_amount'].head(3).apply(lambda x: x * t).to_frame()",
+]
+
+
+@pytest.mark.parametrize("code", NESTED_SCOPE_CODE)
+def test_contract_3_lambdas_and_generators_see_df_pd_and_locals(deed_df, code: str) -> None:
+    out = csv_backend.execute_pandas(deed_df, code, timeout=10)
+    assert isinstance(out, pd.DataFrame) and len(out) >= 1
+
+
+@pytest.mark.parametrize("code", NESTED_SCOPE_CODE)
+def test_contract_2_keeps_its_nested_scope_behaviour(deed_df, code: str) -> None:
+    """The v2 report was made under contract 2; its re-score depends on this."""
+    with pytest.raises(ValueError, match="is not defined"):
+        csv_backend.execute_pandas(deed_df, code, timeout=10, contract=2)
+
+
+class _DeadWorker:
+    def is_alive(self) -> bool:
+        return False
+
+
+class _HungWorker(_DeadWorker):
+    def is_alive(self) -> bool:
+        return True
+
+    def terminate(self) -> None:
+        pass
+
+    def join(self, timeout: float | None = None) -> None:
+        pass
+
+    def kill(self) -> None:
+        pass
+
+
+class _EmptyQueue:
+    def get(self, timeout: float | None = None):
+        time.sleep(min(timeout or 0, 0.05))
+        raise csv_backend.queue.Empty
+
+
+def test_worker_that_dies_without_a_result_is_reported_quickly() -> None:
+    """Regression: the parent waited the full timeout for a crashed worker."""
+    start = time.monotonic()
+    with pytest.raises(ValueError, match="no result"):
+        csv_backend._wait_for_result(_DeadWorker(), _EmptyQueue(), timeout=30)
+    assert time.monotonic() - start < 5
+
+
+def test_hung_worker_times_out() -> None:
+    with pytest.raises(ValueError, match="timed out after 0.3 seconds"):
+        csv_backend._wait_for_result(_HungWorker(), _EmptyQueue(), timeout=0.3)
 
 
 def test_infinite_loop_times_out(deed_df) -> None:

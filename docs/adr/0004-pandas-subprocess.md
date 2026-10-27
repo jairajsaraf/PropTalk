@@ -8,7 +8,7 @@ In pandas mode the LLM writes Python. There is no engine to enforce rules as in 
 
 - A regex blocklist rejects imports, dunder access, `eval`/`exec`, file readers and writers, and similar before anything runs.
 - The code runs in a separate `multiprocessing` process on a pickled copy of the DataFrame, with a 30-second timeout after which the process is terminated.
-- `exec` gets an explicit allowlist of harmless builtins. It started with none, and the v1 eval showed that rejected ordinary code (`len`, `int`). Execution contract 2 added the allowlist and accepted scalar results.
+- `exec` gets an explicit allowlist of harmless builtins. It started with none, and the v1 eval showed that rejected ordinary code (`len`, `int`). Execution contract 2 added the allowlist and accepted scalar results. Contract 3 runs the code in one namespace, so lambdas and generator expressions can see `df`, `pd` and the code's own variables; the published v2 numbers were measured under contract 2.
 
 ## Consequences
 

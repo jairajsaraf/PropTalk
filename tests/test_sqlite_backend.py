@@ -99,10 +99,12 @@ def test_quoted_identifier_bypasses_guard_but_engine_denies(conn) -> None:
 
 
 def test_row_cap_holds_when_guard_skips_limit(conn) -> None:
+    """LIMIT -1 means "no limit" in SQLite and the guard leaves it alone;
+    the engine still fetches at most MAX_ROWS rows of the cross join."""
     sql = ("SELECT a.parcel_id, b.parcel_id FROM deed_transactions a "
-           "JOIN deed_transactions b ON 1=1 WHERE a.city <> 'LIMIT 1'")
+           "JOIN deed_transactions b ON 1=1 LIMIT -1")
     ok, sanitized, _ = validate_query(sql, ALLOWED)
-    assert ok and not sanitized.endswith(f"LIMIT {MAX_ROWS}")
+    assert ok and str(MAX_ROWS) not in sanitized
     assert len(sqlite_backend.execute_query(sanitized, conn)) == MAX_ROWS
 
 

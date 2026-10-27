@@ -47,6 +47,17 @@ _BACKENDS = {
     "sql": sqlite_backend.SqliteBackend(config.get_sqlite_tables()),
     "pandas": csv_backend.CsvBackend(config.get_csv_tables()),
 }
+ENGINE_LABELS = {"sql": "SQL (SQLite)", "pandas": "pandas"}
+
+
+def _restore_history_entry(entry: dict, table_display: str | None) -> None:
+    """on_click callback: it runs before the next rerun builds the widgets,
+    which is the only point where their session state may be set."""
+    st.session_state.current_question = entry["question"]
+    if table_display:
+        st.session_state.table_selector = table_display
+    if entry.get("mode") in ENGINE_LABELS:
+        st.session_state.engine_selector = ENGINE_LABELS[entry["mode"]]
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -57,9 +68,9 @@ with st.sidebar:
     st.caption("Demo over synthetic Texas property data — no live database.")
 
     engine_label = st.radio(
-        "Query engine", ["SQL (SQLite)", "pandas"], index=0, key="engine_selector"
+        "Query engine", list(ENGINE_LABELS.values()), index=0, key="engine_selector"
     )
-    mode = "sql" if engine_label.startswith("SQL") else "pandas"
+    mode = next(m for m, label in ENGINE_LABELS.items() if label == engine_label)
     backend = _BACKENDS[mode]
     code_key = "sql" if mode == "sql" else "pandas_code"
     code_lang = "sql" if mode == "sql" else "python"
@@ -107,17 +118,13 @@ with st.sidebar:
                 st.rerun()
             for i, entry in enumerate(reversed(st.session_state.query_history)):
                 idx = len(st.session_state.query_history) - 1 - i
-                if st.button(
+                st.button(
                     f"**{idx + 1}.** {entry['question']}",
                     key=f"history_{idx}",
                     use_container_width=True,
-                ):
-                    st.session_state.current_question = entry["question"]
-                    # Restore dataset context from the history entry
-                    display = table_display_by_id.get(entry.get("table_id"))
-                    if display and display in table_display_names:
-                        st.session_state.table_selector = display
-                    st.rerun()
+                    on_click=_restore_history_entry,
+                    args=(entry, table_display_by_id.get(entry.get("table_id"))),
+                )
                 entry_code_key = "sql" if "sql" in entry else "pandas_code"
                 if entry_code_key in entry:
                     st.code(entry[entry_code_key], language="sql" if entry_code_key == "sql" else "python")
@@ -334,10 +341,11 @@ if question:
                 st.warning("Response was not standard OpenAI format")
             st.code(debug_info.get("raw_body", "N/A"), language=None)
 
-    # Save to history (dedup by question + dataset + model, not just question text)
+    # Save to history (dedup by question + dataset + engine + model)
     history_entry = {
         "question": question,
         "table_id": selected_table_id,
+        "mode": mode,
         "model": selected_model,
         code_key: generated_code or "",
     }
@@ -347,6 +355,7 @@ if question:
         e for e in st.session_state.query_history
         if not (e["question"].lower() == question.lower()
                 and e.get("table_id") == selected_table_id
+                and e.get("mode") == mode
                 and e.get("model") == selected_model)
     ]
     st.session_state.query_history.append(history_entry)

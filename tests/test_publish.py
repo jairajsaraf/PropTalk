@@ -16,11 +16,10 @@ REPORTS = publish.discover_reports() if os.path.isdir(publish.RESULTS_DIR) else 
 needs_reports = pytest.mark.skipif(not REPORTS, reason="no eval reports in results/")
 
 
-def test_sha256_lf_ignores_line_endings(tmp_path) -> None:
+def test_text_hash_ignores_line_endings(tmp_path) -> None:
     lf, crlf = tmp_path / "a.json", tmp_path / "b.json"
     lf.write_bytes(b'{"a": 1}\n{"b": 2}\n')
     crlf.write_bytes(b'{"a": 1}\r\n{"b": 2}\r\n')
-    assert publish.sha256_lf(str(lf)) == publish.sha256_lf(str(crlf))
     assert run_eval.sha256_text_file(str(lf)) == run_eval.sha256_text_file(str(crlf))
     assert run_eval.sha256_file(str(lf)) != run_eval.sha256_file(str(crlf))
 

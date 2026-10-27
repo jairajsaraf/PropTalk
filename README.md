@@ -108,7 +108,7 @@ A new live run needs its own preregistration and a new report path: `make live R
 
 ## Limitations
 
-- **SQL safety is two layers, and the first is a regex.** `sql_guard.py` is a text-level check with known gaps (a `LIMIT` inside a string literal suppresses the row cap; double-quoted identifiers escape its table whitelist). The SQLite engine itself is the backstop: an authorizer allowlist, `PRAGMA query_only`, a time budget, a value-size limit and a hard row cap, tested with the guard bypassed.
+- **SQL safety is two layers, and the first is a regex.** `sql_guard.py` is a text-level check with known gaps: double-quoted identifiers escape its table whitelist, a `--` inside a string literal is stripped as if it were a comment, and read-only `WITH` queries are rejected. The SQLite engine itself is the backstop: an authorizer allowlist, `PRAGMA query_only`, a time budget, a value-size limit and a hard row cap, tested with the guard bypassed.
 - **The pandas path is not a sandbox.** It is a regex blocklist, a small allowlist of builtins, and a throwaway process per query. A known, unfixed gap (`to_xml`) is kept as an expected-failure test as evidence. Safety there comes mostly from running on a copy of the data in a separate process. The blocklist also matches inside string literals, so it can reject harmless text.
 - **The schema is placed in the prompt,** which does not scale to large schemas.
 - **Model output varies** even at temperature 0, so a single run is a sample.

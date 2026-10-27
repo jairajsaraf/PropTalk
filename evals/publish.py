@@ -18,11 +18,9 @@ from __future__ import annotations
 
 import argparse
 import decimal
-import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 
 from evals import run_eval
@@ -40,13 +38,6 @@ _LABEL_RE = re.compile(r"^eval_report(?:_(v\d+))?\.json$")
 
 
 # --- Reading reports ----------------------------------------------------------
-
-def sha256_lf(path: str) -> str:
-    """sha256 of a file with CRLF folded to LF, so it is the same on every
-    platform regardless of how git checked the file out."""
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read().replace(b"\r\n", b"\n")).hexdigest()
-
 
 def discover_reports(results_dir: str = RESULTS_DIR) -> dict[str, str]:
     """{label: path}; eval_report.json is v1, eval_report_vN.json is vN."""
@@ -91,7 +82,7 @@ def summarize_report(path: str, report: dict, reproduced: bool | None,
     questions, adversarial = run_eval.load_cases()
     return {
         "file": os.path.relpath(path, ROOT).replace(os.sep, "/"),
-        "sha256_lf": sha256_lf(path),
+        "sha256_lf": run_eval.sha256_text_file(path),
         "run": {
             "model": meta["model"],
             "model_listed_as": meta.get("model_listed_as"),
@@ -122,14 +113,6 @@ def summarize_report(path: str, report: dict, reproduced: bool | None,
     }
 
 
-def _git(*args: str) -> str:
-    try:
-        out = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True)
-    except (OSError, subprocess.CalledProcessError):
-        return ""
-    return out.stdout.strip()
-
-
 def build_metrics(results_dir: str = RESULTS_DIR, rescore: bool = True) -> dict:
     reports = {}
     for label, path in discover_reports(results_dir).items():
@@ -143,8 +126,8 @@ def build_metrics(results_dir: str = RESULTS_DIR, rescore: bool = True) -> dict:
         reports[label] = summarize_report(path, report, reproduced, mismatches)
     return {
         "schema": SCHEMA,
-        "generated_at_commit": _git("rev-parse", "HEAD") or None,
-        "working_tree_dirty": bool(_git("status", "--porcelain")),
+        "generated_at_commit": run_eval._git("rev-parse", "HEAD") or None,
+        "working_tree_dirty": bool(run_eval._git("status", "--porcelain")),
         "bars": run_eval.BARS,
         "reports": reports,
     }
