@@ -37,6 +37,7 @@ from urllib.parse import urlparse
 
 import pandas as pd
 import requests
+from dotenv import load_dotenv
 
 import config
 import csv_backend
@@ -56,6 +57,7 @@ EVALS_DIR = os.path.join(ROOT, "evals")
 PREREG_PATH = os.path.join(EVALS_DIR, "PREREGISTRATION.md")
 CASE_FILES = ("questions.jsonl", "adversarial.jsonl")
 DEFAULT_REPORT = os.path.join(ROOT, "results", "eval_report.json")
+ENV_PATH = os.path.join(ROOT, ".env")
 
 DEFAULT_K = 3
 MODES = ("sql", "pandas")
@@ -561,6 +563,12 @@ def _revalidate(trial: dict) -> dict:
 
 # --- CLI ------------------------------------------------------------------------------
 
+def _load_env() -> None:
+    """Read LLM_API_KEY / LLM_API_BASE / LLM_MODEL from .env, as app.py does.
+    Variables already set in the shell win over the file."""
+    load_dotenv(ENV_PATH)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -591,9 +599,10 @@ def main(argv: list[str] | None = None) -> int:
         print("evals/ has uncommitted changes or the preregistration is not committed; "
               "commit it first (or pass --allow-dirty, which is recorded).", file=sys.stderr)
         return 2
+    _load_env()
     api_key = os.getenv("LLM_API_KEY")
     if not api_key:
-        print("LLM_API_KEY is not set.", file=sys.stderr)
+        print("LLM_API_KEY is not set (shell or .env).", file=sys.stderr)
         return 2
 
     model = llm.get_model()

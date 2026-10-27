@@ -211,3 +211,16 @@ def test_redactor_handles_windows_separators() -> None:
         "open {SENTINEL_DIR}/secret.txt"
     assert redact({"a": [r"C:\Users\someone\Temp\proptalk_sentinel_x\dump.xml"]}) == \
         {"a": ["{SENTINEL_DIR}\\dump.xml"]}
+
+
+def test_env_file_is_loaded_but_shell_variables_win(tmp_path, monkeypatch) -> None:
+    env = tmp_path / ".env"
+    env.write_text("LLM_MODEL=from-file\nLLM_API_BASE=https://example.test/v1\n")
+    for name in ("LLM_MODEL", "LLM_API_BASE"):
+        monkeypatch.setenv(name, "placeholder")  # registers cleanup
+        monkeypatch.delenv(name)
+    monkeypatch.setattr(run_eval, "ENV_PATH", str(env))
+    monkeypatch.setenv("LLM_API_BASE", "https://shell.test/v1")
+    run_eval._load_env()
+    assert run_eval.llm.get_model() == "from-file"
+    assert run_eval.llm._get_api_base() == "https://shell.test/v1"
