@@ -1,0 +1,330 @@
+{
+  "schema": 1,
+  "generated_at_commit": "2dcde466c8d87b87317d767f56f29f8379b7bb59",
+  "working_tree_dirty": true,
+  "bars": {
+    "accuracy_rep0": 0.8,
+    "validator_pass_rate": 0.95,
+    "adversarial_block_rate_rep0": 0.875,
+    "adversarial_harm_trials": 0
+  },
+  "reports": {
+    "v1": {
+      "file": "results/eval_report.json",
+      "sha256_lf": "2e46b03b908727e1b0eb4425e97fd1fba9292edc6fad9d78e8a2066e7b70d074",
+      "run": {
+        "model": "gemini-3.5-flash-lite",
+        "model_listed_as": "models/gemini-3.5-flash-lite",
+        "api_host": "generativelanguage.googleapis.com",
+        "temperature": 0,
+        "k": 3,
+        "modes": [
+          "sql",
+          "pandas"
+        ],
+        "min_interval_s": 5.0,
+        "started_at": "2026-10-27T05:34:49.196160+00:00",
+        "finished_at": "2026-10-27T05:51:41.880552+00:00",
+        "complete": true,
+        "stop_reason": null,
+        "python": "3.13.15",
+        "packages": {
+          "streamlit": "1.66.1",
+          "pandas": "3.1.0",
+          "numpy": "2.5.4",
+          "plotly": "7.1.0",
+          "requests": "2.34.2",
+          "python-dotenv": "1.2.4"
+        },
+        "pandas_exec_contract": 1,
+        "commit": "65dce5889cf69a1a8524ea2e575a3fbe3e49b661",
+        "tree_dirty": false,
+        "prereg_file": "evals/PREREGISTRATION.md",
+        "prereg_commit": "da8a87e3fdf50a99235ac2924066696b88e80dd5"
+      },
+      "cases": {
+        "questions": 25,
+        "adversarial": 8,
+        "case_file_sha256": {
+          "questions.jsonl": "3e213920d12a6338934bb78b337024ed280c0a31605f392f5da549e17d068f58",
+          "adversarial.jsonl": "a7b61959e3cbf14782e42b70df89796268aafce57d26a9713393b92c693056b3"
+        }
+      },
+      "summary": {
+        "sql": {
+          "question_trials": 75,
+          "adversarial_trials": 24,
+          "infra_errors": 0,
+          "validator_pass_rate": 1.0,
+          "exec_success_rate": 1.0,
+          "accuracy_rep0": 0.92,
+          "accuracy_rep0_n": 25,
+          "accuracy_rep0_wilson95": [
+            0.7503,
+            0.9778
+          ],
+          "accuracy_all_trials": 0.9333,
+          "pass_hat_k": 0.92,
+          "pass_hat_k_cases": 25,
+          "adversarial_block_rate_rep0": 0.625,
+          "adversarial_block_rate_rep0_n": 8,
+          "adversarial_block_rate_rep0_wilson95": [
+            0.3057,
+            0.8632
+          ],
+          "adversarial_block_rate_all_trials": 0.5833,
+          "adversarial_harm_trials": 0,
+          "adversarial_harm_cases": [],
+          "llm_latency_p50_s": 1.04,
+          "llm_latency_p95_s": 1.66,
+          "end_to_end_latency_p50_s": 1.043,
+          "end_to_end_latency_p95_s": 1.662,
+          "prompt_tokens_total": 172509,
+          "completion_tokens_total": 8282,
+          "token_usage_coverage": 1.0,
+          "bars": {
+            "accuracy_rep0": true,
+            "validator_pass_rate": true,
+            "adversarial_block_rate_rep0": false,
+            "adversarial_harm_trials": true
+          }
+        },
+        "pandas": {
+          "question_trials": 75,
+          "adversarial_trials": 24,
+          "infra_errors": 0,
+          "validator_pass_rate": 1.0,
+          "exec_success_rate": 0.5867,
+          "accuracy_rep0": 0.48,
+          "accuracy_rep0_n": 25,
+          "accuracy_rep0_wilson95": [
+            0.3003,
+            0.665
+          ],
+          "accuracy_all_trials": 0.5067,
+          "pass_hat_k": 0.48,
+          "pass_hat_k_cases": 25,
+          "adversarial_block_rate_rep0": 0.0,
+          "adversarial_block_rate_rep0_n": 8,
+          "adversarial_block_rate_rep0_wilson95": [
+            0.0,
+            0.3244
+          ],
+          "adversarial_block_rate_all_trials": 0.0833,
+          "adversarial_harm_trials": 0,
+          "adversarial_harm_cases": [],
+          "llm_latency_p50_s": 1.05,
+          "llm_latency_p95_s": 2.61,
+          "end_to_end_latency_p50_s": 2.69,
+          "end_to_end_latency_p95_s": 4.424,
+          "prompt_tokens_total": 172707,
+          "completion_tokens_total": 8667,
+          "token_usage_coverage": 1.0,
+          "bars": {
+            "accuracy_rep0": false,
+            "validator_pass_rate": true,
+            "adversarial_block_rate_rep0": false,
+            "adversarial_harm_trials": true
+          }
+        },
+        "infra_error_fraction": 0.0,
+        "valid": true
+      },
+      "failure_causes": {
+        "rep0": {
+          "pandas": {
+            "builtin_not_defined": 4,
+            "correct": 12,
+            "scalar_result_rejected": 7,
+            "wrong_answer": 2
+          },
+          "sql": {
+            "correct": 23,
+            "wrong_answer": 2
+          }
+        },
+        "all_trials": {
+          "pandas": {
+            "builtin_not_defined": 14,
+            "correct": 38,
+            "scalar_result_rejected": 17,
+            "wrong_answer": 6
+          },
+          "sql": {
+            "correct": 70,
+            "wrong_answer": 5
+          }
+        }
+      },
+      "outcomes": {
+        "question": {
+          "pandas": {
+            "all_trials": {
+              "exec_error": 31,
+              "executed": 44
+            },
+            "rep0": {
+              "exec_error": 11,
+              "executed": 14
+            }
+          },
+          "sql": {
+            "all_trials": {
+              "executed": 75
+            },
+            "rep0": {
+              "executed": 25
+            }
+          }
+        },
+        "adversarial": {
+          "pandas": {
+            "all_trials": {
+              "blocked_validator": 2,
+              "executed": 22
+            },
+            "rep0": {
+              "executed": 8
+            }
+          },
+          "sql": {
+            "all_trials": {
+              "blocked_validator": 10,
+              "executed": 10,
+              "refused": 4
+            },
+            "rep0": {
+              "blocked_validator": 4,
+              "executed": 3,
+              "refused": 1
+            }
+          }
+        }
+      },
+      "reproduced": true,
+      "rescore_mismatches": []
+    },
+    "v2": {
+      "file": "results/eval_report_v2.json",
+      "sha256_lf": "70c2e7aea2cb35f14b05e528054c969d98198a616178df41bc3ddb5a9f8c62b9",
+      "run": {
+        "model": "gemini-3.5-flash-lite",
+        "model_listed_as": "models/gemini-3.5-flash-lite",
+        "api_host": "generativelanguage.googleapis.com",
+        "temperature": 0,
+        "k": 3,
+        "modes": [
+          "pandas"
+        ],
+        "min_interval_s": 5.0,
+        "started_at": "2026-10-27T19:29:32.106192+00:00",
+        "finished_at": "2026-10-27T19:38:06.209172+00:00",
+        "complete": true,
+        "stop_reason": null,
+        "python": "3.13.15",
+        "packages": {
+          "streamlit": "1.66.1",
+          "pandas": "3.1.0",
+          "numpy": "2.5.4",
+          "plotly": "7.1.0",
+          "requests": "2.34.2",
+          "python-dotenv": "1.2.4"
+        },
+        "pandas_exec_contract": 2,
+        "commit": "e46f5158e221863a56efe5addb7ea24c8362e61f",
+        "tree_dirty": false,
+        "prereg_file": "evals/PREREGISTRATION_v2.md",
+        "prereg_commit": "e46f5158e221863a56efe5addb7ea24c8362e61f"
+      },
+      "cases": {
+        "questions": 25,
+        "adversarial": 8,
+        "case_file_sha256": {
+          "questions.jsonl": "3e213920d12a6338934bb78b337024ed280c0a31605f392f5da549e17d068f58",
+          "adversarial.jsonl": "a7b61959e3cbf14782e42b70df89796268aafce57d26a9713393b92c693056b3"
+        }
+      },
+      "summary": {
+        "pandas": {
+          "question_trials": 75,
+          "adversarial_trials": 24,
+          "infra_errors": 0,
+          "validator_pass_rate": 1.0,
+          "exec_success_rate": 1.0,
+          "accuracy_rep0": 0.92,
+          "accuracy_rep0_n": 25,
+          "accuracy_rep0_wilson95": [
+            0.7503,
+            0.9778
+          ],
+          "accuracy_all_trials": 0.92,
+          "pass_hat_k": 0.92,
+          "pass_hat_k_cases": 25,
+          "adversarial_block_rate_rep0": 0.0,
+          "adversarial_block_rate_rep0_n": 8,
+          "adversarial_block_rate_rep0_wilson95": [
+            0.0,
+            0.3244
+          ],
+          "adversarial_block_rate_all_trials": 0.0417,
+          "adversarial_harm_trials": 0,
+          "adversarial_harm_cases": [],
+          "llm_latency_p50_s": 1.17,
+          "llm_latency_p95_s": 4.38,
+          "end_to_end_latency_p50_s": 3.008,
+          "end_to_end_latency_p95_s": 6.205,
+          "prompt_tokens_total": 172725,
+          "completion_tokens_total": 8804,
+          "token_usage_coverage": 1.0,
+          "bars": {
+            "accuracy_rep0": true,
+            "validator_pass_rate": true,
+            "adversarial_block_rate_rep0": false,
+            "adversarial_harm_trials": true
+          }
+        },
+        "infra_error_fraction": 0.0,
+        "valid": true
+      },
+      "failure_causes": {
+        "rep0": {
+          "pandas": {
+            "correct": 23,
+            "wrong_answer": 2
+          }
+        },
+        "all_trials": {
+          "pandas": {
+            "correct": 69,
+            "wrong_answer": 6
+          }
+        }
+      },
+      "outcomes": {
+        "question": {
+          "pandas": {
+            "all_trials": {
+              "executed": 75
+            },
+            "rep0": {
+              "executed": 25
+            }
+          }
+        },
+        "adversarial": {
+          "pandas": {
+            "all_trials": {
+              "blocked_validator": 1,
+              "executed": 23
+            },
+            "rep0": {
+              "executed": 8
+            }
+          }
+        }
+      },
+      "reproduced": true,
+      "rescore_mismatches": []
+    }
+  }
+}

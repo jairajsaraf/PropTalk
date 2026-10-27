@@ -113,6 +113,13 @@ def sha256_file(path: str) -> str:
         return hashlib.sha256(f.read()).hexdigest()
 
 
+def sha256_text_file(path: str) -> str:
+    """Like sha256_file, with CRLF folded to LF, so a text file hashes the
+    same on Windows (autocrlf checkout) as in git."""
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def case_file_hashes() -> dict[str, str]:
     return {name: sha256_file(os.path.join(EVALS_DIR, name)) for name in CASE_FILES}
 
@@ -432,7 +439,7 @@ def _bar_met(name: str, value: float | None, bar: float) -> bool | None:
 def _write_report(report: dict, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = f"{path}.tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", newline="\n") as f:  # LF on every platform
         json.dump(report, f, indent=2, default=str)
     os.replace(tmp, path)
 
@@ -522,7 +529,7 @@ def build_meta(model: str, listed_as: str | None, prereg_path: str = PREREG_PATH
         "git": git_info(prereg_path),
         "case_file_sha256": case_file_hashes(),
         "prereg_file": os.path.relpath(prereg_path, ROOT).replace(os.sep, "/"),
-        "prereg_sha256": sha256_file(prereg_path) if os.path.exists(prereg_path) else None,
+        "prereg_sha256": sha256_text_file(prereg_path) if os.path.exists(prereg_path) else None,
         "pandas_exec_contract": csv_backend.EXEC_CONTRACT,
         "python": platform.python_version(),
         "packages": versions,
