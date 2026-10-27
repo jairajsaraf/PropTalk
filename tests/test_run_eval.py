@@ -247,7 +247,7 @@ def test_build_meta_records_the_contract_and_prereg_file() -> None:
     meta = run_eval.build_meta("m", "models/m", PREREG_V2_PATH)
     assert meta["pandas_exec_contract"] == run_eval.csv_backend.EXEC_CONTRACT == 2
     assert meta["prereg_file"] == "evals/PREREGISTRATION_v2.md"
-    assert meta["prereg_sha256"] == run_eval.sha256_file(PREREG_V2_PATH)
+    assert meta["prereg_sha256"] == run_eval.sha256_text_file(PREREG_V2_PATH)
 
 
 @pytest.mark.parametrize("meta, expected", [({}, 2), ({"pandas_exec_contract": 1}, 1)])

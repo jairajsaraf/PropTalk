@@ -10,7 +10,7 @@ import requests
 from prompts import get_csv_prompt, get_sql_prompt
 
 DEFAULT_API_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 
 def _get_api_base() -> str:
