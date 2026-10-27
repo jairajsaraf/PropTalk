@@ -8,6 +8,7 @@ every outcome and the harm detector are exercised.
 """
 
 import json
+import os
 import re
 
 import pandas as pd
@@ -151,13 +152,19 @@ def test_stop_rule_on_bad_credentials(tmp_path) -> None:
 
 
 def test_live_refuses_when_cases_differ_from_preregistration(monkeypatch) -> None:
-    monkeypatch.setattr(run_eval, "preregistered_hashes", lambda: {"questions.jsonl": "0" * 64})
+    monkeypatch.setattr(run_eval, "preregistered_hashes",
+                        lambda path=run_eval.PREREG_PATH: {"questions.jsonl": "0" * 64})
     assert run_eval.main(["--live"]) == 2
 
 
-def test_preregistration_matches_case_files_and_bars() -> None:
-    assert run_eval.preregistered_hashes() == run_eval.case_file_hashes()
-    with open(run_eval.PREREG_PATH) as f:
+PREREG_V2_PATH = os.path.join(os.path.dirname(run_eval.PREREG_PATH), "PREREGISTRATION_v2.md")
+
+
+@pytest.mark.parametrize("path", [run_eval.PREREG_PATH, PREREG_V2_PATH],
+                         ids=["v1", "v2"])
+def test_preregistration_matches_case_files_and_bars(path) -> None:
+    assert run_eval.preregistered_hashes(path) == run_eval.case_file_hashes()
+    with open(path) as f:
         text = f.read()
     for name, bar in run_eval.BARS.items():
         assert re.search(rf"`{name}`[^\n]*`{bar}`", text), f"bar {name}={bar} not in prereg"
@@ -224,3 +231,98 @@ def test_env_file_is_loaded_but_shell_variables_win(tmp_path, monkeypatch) -> No
     run_eval._load_env()
     assert run_eval.llm.get_model() == "from-file"
     assert run_eval.llm._get_api_base() == "https://shell.test/v1"
+
+
+# --- execution contract, --modes, --prereg, overwrite guard ---------------------
+
+def test_run_code_honours_the_execution_contract() -> None:
+    code = "result = df.shape[0]"
+    _, outcome1, _, error1 = run_eval.run_code("pandas", "Deed Transactions", code, contract=1)
+    assert outcome1 == "exec_error" and "Expected DataFrame result, got int" in error1
+    _, outcome2, df2, _ = run_eval.run_code("pandas", "Deed Transactions", code, contract=2)
+    assert outcome2 == "executed" and df2.iat[0, 0] == 5000
+
+
+def test_build_meta_records_the_contract_and_prereg_file() -> None:
+    meta = run_eval.build_meta("m", "models/m", PREREG_V2_PATH)
+    assert meta["pandas_exec_contract"] == run_eval.csv_backend.EXEC_CONTRACT == 2
+    assert meta["prereg_file"] == "evals/PREREGISTRATION_v2.md"
+    assert meta["prereg_sha256"] == run_eval.sha256_file(PREREG_V2_PATH)
+
+
+@pytest.mark.parametrize("meta, expected", [({}, 2), ({"pandas_exec_contract": 1}, 1)])
+def test_run_live_passes_the_contract_to_every_trial(monkeypatch, tmp_path, meta, expected) -> None:
+    seen = {}
+    monkeypatch.setattr(run_eval, "expected_answers",
+                        lambda questions, contract=2: seen.setdefault("expected", contract) and {})
+    monkeypatch.setattr(run_eval, "run_trial",
+                        lambda case, kind, mode, rep, ask, exp, sdir, sleep, contract=2: (
+                            seen.setdefault("trial", set()).add(contract) or
+                            {"case_id": case["id"], "kind": kind, "mode": mode, "rep": rep,
+                             "outcome": "refused", "latency_s": 0.0, "llm": None,
+                             "validator": None, "correct": False, "passed": True,
+                             "harm": {"data_changed": False, "file_written": False,
+                                      "secret_leaked": False}}))
+    run_eval.run_live(lambda *a: {}, meta, k=1, modes=("pandas",), min_interval=0,
+                      out_path=str(tmp_path / "r.json"), sleep=lambda s: None)
+    assert seen["expected"] == expected and seen["trial"] == {expected}
+
+
+@pytest.mark.parametrize("meta, expected", [({}, 1), ({"pandas_exec_contract": 2}, 2)])
+def test_rescore_uses_the_reports_own_contract(monkeypatch, meta, expected) -> None:
+    """A report written before the field existed is contract 1."""
+    seen = {}
+    tiny = pd.DataFrame({"x": [1]})
+    monkeypatch.setattr(run_eval, "expected_answers",
+                        lambda questions, contract=2: seen.__setitem__("expected", contract) or {"d01": tiny})
+    monkeypatch.setattr(run_eval, "run_code",
+                        lambda mode, table, code, contract=2: (
+                            seen.__setitem__("run", contract) or
+                            ({"passed": True, "reason": ""}, "executed", pd.DataFrame({"x": [1]}), "")))
+    monkeypatch.setattr(run_eval, "is_correct", lambda case, expected_df, actual: True)
+    report = {"meta": {"k": 1, **meta}, "expected": {"d01": run_eval.frame_preview(tiny)},
+              "summary": {}, "trials": [
+        {"case_id": "d01", "kind": "question", "mode": "pandas", "rep": 0, "outcome": "executed",
+         "correct": True, "code": "result = df", "validator": {"passed": True, "reason": ""},
+         "llm": None, "latency_s": 0.0, "error": ""}]}
+    run_eval.rescore(report)
+    assert seen == {"expected": expected, "run": expected}
+
+
+def test_pandas_only_summary_has_only_pandas(stub_report) -> None:
+    report, _ = stub_report
+    pandas_trials = [t for t in report["trials"] if t["mode"] == "pandas"]
+    summary = run_eval.summarize(pandas_trials, report["meta"]["k"])
+    assert set(summary) == {"pandas", "infra_error_fraction", "valid"}
+    assert summary["pandas"] == report["summary"]["pandas"]
+
+
+def test_live_rejects_bad_modes_and_missing_prereg(capsys) -> None:
+    assert run_eval.main(["--live", "--modes", "sql,mongo"]) == 2
+    assert run_eval.main(["--live", "--modes", ""]) == 2
+    assert run_eval.main(["--live", "--prereg", "evals/does_not_exist.md"]) == 2
+    err = capsys.readouterr().err
+    assert "--modes must be" in err and "not found" in err
+
+
+def test_live_never_overwrites_an_existing_report(tmp_path, capsys) -> None:
+    existing = tmp_path / "eval_report.json"
+    existing.write_text('{"keep": "me"}')
+    assert run_eval.main(["--live", "--report", str(existing)]) == 2
+    assert "already exists" in capsys.readouterr().err
+    assert existing.read_text() == '{"keep": "me"}'
+
+
+def test_live_checks_the_chosen_preregistration(monkeypatch, tmp_path, capsys) -> None:
+    seen = []
+    monkeypatch.setattr(run_eval, "preregistered_hashes",
+                        lambda path=run_eval.PREREG_PATH: seen.append(os.path.basename(path)) or {})
+    assert run_eval.main(["--live", "--prereg", PREREG_V2_PATH,
+                          "--report", str(tmp_path / "new.json")]) == 2
+    assert seen == ["PREREGISTRATION_v2.md"]
+    assert "PREREGISTRATION_v2.md" in capsys.readouterr().err
+
+
+def test_git_info_accepts_a_prereg_path() -> None:
+    info = run_eval.git_info(PREREG_V2_PATH)
+    assert {"commit", "dirty", "evals_dirty", "prereg_commit", "prereg_committed_at"} <= set(info)

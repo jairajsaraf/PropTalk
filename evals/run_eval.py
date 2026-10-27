@@ -1,19 +1,23 @@
 """Run the PropTalk eval through the real path, or re-score a saved report.
 
-    python -m evals.run_eval --live [--k 3] [--min-interval 7]
+    python -m evals.run_eval --live [--k 3] [--min-interval 7] [--modes sql,pandas]
+                             [--prereg evals/PREREGISTRATION.md] [--report PATH]
     python -m evals.run_eval --offline [--report results/eval_report.json]
 
 --live makes one LLM call per trial plus one GET {LLM_API_BASE}/models.
 Each trial goes prompt -> llm.query_llm -> validator (sql_guard or the
 pandas blocklist) -> engine (SQLite or the pandas subprocess), exactly the
-calls app.py makes. The rules are fixed in evals/PREREGISTRATION.md; a live
-run refuses to start unless the case files match the hashes recorded there.
+calls app.py makes. The rules are fixed in a preregistration file; a live run
+refuses to start unless the case files match the hashes recorded there, and
+refuses to overwrite an existing report.
 
 --offline makes no network calls. It re-runs every stored question trial's
 generated code against freshly generated data, re-scores it, recomputes the
 summary, and exits non-zero if anything differs from the saved report.
 Adversarial code is not re-executed offline (only re-validated): its
 effects were observed during the live run and are taken from the transcript.
+Question code is re-executed under the pandas execution contract recorded in
+the report (reports from before the field existed are contract 1).
 """
 
 from __future__ import annotations
@@ -113,8 +117,8 @@ def case_file_hashes() -> dict[str, str]:
     return {name: sha256_file(os.path.join(EVALS_DIR, name)) for name in CASE_FILES}
 
 
-def preregistered_hashes() -> dict[str, str]:
-    with open(PREREG_PATH) as f:
+def preregistered_hashes(path: str = PREREG_PATH) -> dict[str, str]:
+    with open(path) as f:
         text = f.read()
     return dict(re.findall(r"`(\w+\.jsonl)`\s+sha256:\s+`([0-9a-f]{64})`", text))
 
@@ -127,8 +131,9 @@ def _git(*args: str) -> str:
     return out.stdout.strip()
 
 
-def git_info() -> dict:
-    prereg_log = _git("log", "-1", "--format=%H %cI", "--", "evals/PREREGISTRATION.md").split()
+def git_info(prereg_path: str = PREREG_PATH) -> dict:
+    prereg_rel = os.path.relpath(prereg_path, ROOT).replace(os.sep, "/")
+    prereg_log = _git("log", "-1", "--format=%H %cI", "--", prereg_rel).split()
     return {
         "commit": _git("rev-parse", "HEAD"),
         "dirty": bool(_git("status", "--porcelain")),
@@ -138,12 +143,14 @@ def git_info() -> dict:
     }
 
 
-def expected_answers(questions: list[dict]) -> dict[str, pd.DataFrame]:
+def expected_answers(questions: list[dict],
+                     contract: int = csv_backend.EXEC_CONTRACT) -> dict[str, pd.DataFrame]:
     """Run every pandas reference through the production pandas path."""
     pandas_backend = BACKENDS["pandas"]
     return {
         c["id"]: csv_backend.execute_pandas(pandas_backend.load_data(c["table"]),
-                                            c["reference_pandas"], timeout=60)
+                                            c["reference_pandas"], timeout=60,
+                                            contract=contract)
         for c in questions
     }
 
@@ -164,7 +171,8 @@ def is_correct(case: dict, expected: pd.DataFrame, actual: pd.DataFrame) -> bool
 
 # --- The real path -----------------------------------------------------------
 
-def run_code(mode: str, table_id: str, code: str) -> tuple[dict, str, pd.DataFrame | None, str]:
+def run_code(mode: str, table_id: str, code: str,
+             contract: int = csv_backend.EXEC_CONTRACT) -> tuple[dict, str, pd.DataFrame | None, str]:
     """Validate then execute generated code the way app.py does."""
     backend = BACKENDS[mode]
     if mode == "sql":
@@ -182,7 +190,8 @@ def run_code(mode: str, table_id: str, code: str) -> tuple[dict, str, pd.DataFra
     if reason:
         return validator, "blocked_validator", None, reason
     try:
-        return validator, "executed", csv_backend.execute_pandas(backend.load_data(table_id), code), ""
+        return validator, "executed", csv_backend.execute_pandas(
+            backend.load_data(table_id), code, contract=contract), ""
     except ValueError as exc:
         return validator, "exec_error", None, str(exc)
 
@@ -288,7 +297,8 @@ def _redactor(sentinel_dir: str) -> Callable[[object], object]:
 
 
 def run_trial(case: dict, kind: str, mode: str, rep: int, ask: Callable,
-              expected: dict, sentinel_dir: str, sleep: Callable[[float], None]) -> dict:
+              expected: dict, sentinel_dir: str, sleep: Callable[[float], None],
+              contract: int = csv_backend.EXEC_CONTRACT) -> dict:
     backend = BACKENDS[mode]
     table_id = case["table"]
     # Forward slashes: a Windows path pasted into a Python string literal
@@ -325,7 +335,7 @@ def run_trial(case: dict, kind: str, mode: str, rep: int, ask: Callable,
         if not code.strip():
             record["outcome"] = "refused"
         else:
-            validator, outcome, df, error = run_code(mode, table_id, code)
+            validator, outcome, df, error = run_code(mode, table_id, code, contract)
             record.update(validator=validator, outcome=outcome, error=error[:500])
             if df is not None:
                 record["result"] = frame_preview(df)
@@ -432,7 +442,8 @@ def run_live(ask: Callable, meta: dict, k: int, modes: tuple[str, ...], min_inte
              clock: Callable[[], float] = time.monotonic) -> dict:
     """Run every trial, saving the report after each one. Returns the report."""
     questions, adversarial = load_cases()
-    expected = expected_answers(questions)
+    contract = meta.get("pandas_exec_contract", csv_backend.EXEC_CONTRACT)
+    expected = expected_answers(questions, contract)
     sentinel_dir = tempfile.mkdtemp(prefix="proptalk_sentinel_")
     with open(os.path.join(sentinel_dir, "secret.txt"), "w") as f:
         f.write(SENTINEL_TOKEN + "\n")
@@ -458,7 +469,8 @@ def run_live(ask: Callable, meta: dict, k: int, modes: tuple[str, ...], min_inte
                                 sleep(wait)
                         last_call = clock()
                         try:
-                            record = run_trial(case, kind, mode, rep, ask, expected, sentinel_dir, sleep)
+                            record = run_trial(case, kind, mode, rep, ask, expected, sentinel_dir, sleep,
+                                               contract)
                         except FatalError as exc:
                             report["meta"]["stop_reason"] = f"fatal: {exc}"
                             return _finish(report, k, out_path)
@@ -495,7 +507,7 @@ def resolve_model(model: str, available: list[str]) -> str | None:
     return None
 
 
-def build_meta(model: str, listed_as: str | None) -> dict:
+def build_meta(model: str, listed_as: str | None, prereg_path: str = PREREG_PATH) -> dict:
     versions = {}
     for pkg in PACKAGES:
         try:
@@ -507,9 +519,11 @@ def build_meta(model: str, listed_as: str | None) -> dict:
         "model_listed_as": listed_as,
         "api_host": urlparse(llm._get_api_base()).netloc,
         "temperature": 0,
-        "git": git_info(),
+        "git": git_info(prereg_path),
         "case_file_sha256": case_file_hashes(),
-        "prereg_sha256": sha256_file(PREREG_PATH) if os.path.exists(PREREG_PATH) else None,
+        "prereg_file": os.path.relpath(prereg_path, ROOT).replace(os.sep, "/"),
+        "prereg_sha256": sha256_file(prereg_path) if os.path.exists(prereg_path) else None,
+        "pandas_exec_contract": csv_backend.EXEC_CONTRACT,
         "python": platform.python_version(),
         "packages": versions,
     }
@@ -521,7 +535,8 @@ def rescore(report: dict) -> tuple[dict, list[str]]:
     """Re-execute stored question code on fresh data and recompute everything."""
     questions, _ = load_cases()
     cases = {c["id"]: c for c in questions}
-    expected = expected_answers(questions)
+    contract = report["meta"].get("pandas_exec_contract", 1)
+    expected = expected_answers(questions, contract)
     mismatches = []
 
     for cid, df in expected.items():
@@ -534,7 +549,8 @@ def rescore(report: dict) -> tuple[dict, list[str]]:
             continue
         label = f"{t['case_id']}/{t['mode']}/rep{t['rep']}"
         if t["kind"] == "question":
-            validator, outcome, df, _ = run_code(t["mode"], cases[t["case_id"]]["table"], t["code"])
+            validator, outcome, df, _ = run_code(t["mode"], cases[t["case_id"]]["table"],
+                                                 t["code"], contract)
             correct = outcome == "executed" and is_correct(cases[t["case_id"]], expected[t["case_id"]], df)
             if outcome != t["outcome"]:
                 mismatches.append(f"{label}: outcome {t['outcome']} -> {outcome}")
@@ -576,6 +592,10 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--offline", action="store_true", help="re-score a saved report (no network)")
     parser.add_argument("--report", default=DEFAULT_REPORT)
     parser.add_argument("--k", type=int, default=DEFAULT_K)
+    parser.add_argument("--modes", default=",".join(MODES),
+                        help="comma-separated subset of: sql,pandas")
+    parser.add_argument("--prereg", default=PREREG_PATH,
+                        help="preregistration file whose case hashes must match")
     parser.add_argument("--min-interval", type=float, default=7.0,
                         help="seconds between LLM calls (throttle to the provider's rate limit)")
     parser.add_argument("--allow-dirty", action="store_true",
@@ -591,10 +611,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"MISMATCH: {m}", file=sys.stderr)
         return 1 if mismatches else 0
 
-    if case_file_hashes() != preregistered_hashes():
-        print("Case files do not match the hashes in evals/PREREGISTRATION.md.", file=sys.stderr)
+    modes = tuple(m.strip() for m in args.modes.split(",") if m.strip())
+    if not modes or any(m not in MODES for m in modes):
+        print(f"--modes must be a comma-separated subset of {','.join(MODES)}.", file=sys.stderr)
         return 2
-    git = git_info()
+    prereg = os.path.abspath(args.prereg)
+    if not os.path.exists(prereg):
+        print(f"Preregistration file not found: {args.prereg}", file=sys.stderr)
+        return 2
+    if case_file_hashes() != preregistered_hashes(prereg):
+        print(f"Case files do not match the hashes in {args.prereg}.", file=sys.stderr)
+        return 2
+    if os.path.exists(args.report):
+        print(f"{args.report} already exists; pass a new --report path. "
+              "A finished report is never overwritten.", file=sys.stderr)
+        return 2
+    git = git_info(prereg)
     if (git["evals_dirty"] or not git["prereg_commit"]) and not args.allow_dirty:
         print("evals/ has uncommitted changes or the preregistration is not committed; "
               "commit it first (or pass --allow-dirty, which is recorded).", file=sys.stderr)
@@ -610,7 +642,7 @@ def main(argv: list[str] | None = None) -> int:
     if listed is None:
         print(f"Model {model!r} is not in GET /models for this endpoint.", file=sys.stderr)
         return 2
-    report = run_live(live_ask(model), build_meta(model, listed), args.k, MODES,
+    report = run_live(live_ask(model), build_meta(model, listed, prereg), args.k, modes,
                       args.min_interval, args.report)
     print(json.dumps(report["summary"], indent=2))
     print(f"stop_reason: {report['meta']['stop_reason']}  complete: {report['meta']['complete']}")

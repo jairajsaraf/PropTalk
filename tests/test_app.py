@@ -72,3 +72,13 @@ def test_blocked_pandas_code_is_reported(run_app) -> None:
     at = run_app({"pandas_code": "import os\nresult = df", "chart_config": None,
                   "explanation": ""}, engine="pandas")
     assert any("Blocked pattern" in e.value for e in at.error)
+
+
+def test_pandas_engine_accepts_a_scalar_answer(run_app) -> None:
+    at = run_app({
+        "pandas_code": "result = int((df['cash_purchase'] == 'Y').sum())",
+        "chart_config": None,
+        "explanation": "cash purchases",
+    }, engine="pandas")
+    assert not at.error
+    assert at.dataframe[0].value.iloc[0, 0] == 1358

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import multiprocessing
 import os
 import pickle
@@ -149,13 +150,36 @@ def _validate_pandas_code(code: str) -> str | None:
 
 _EXEC_TIMEOUT = 30  # seconds
 
+# Version of the execution contract, recorded in every eval report so a saved
+# report can be re-scored under the rules it was produced with.
+#   1: no builtins at all; a result that is not a DataFrame/Series is an error.
+#   2: a small allowlist of builtins; a scalar result becomes a one-cell frame.
+EXEC_CONTRACT = 2
 
-def _exec_worker(code: str, df_bytes: bytes, result_queue: multiprocessing.Queue):
+# Harmless builtins that ordinary pandas code reaches for. Deliberately absent:
+# type, object, getattr/setattr/delattr, hasattr, vars, dir, globals, locals,
+# open, input, print, eval, exec, compile, __import__, breakpoint, memoryview,
+# bytearray, bytes, map, filter, iter, next, callable, isinstance, issubclass.
+SAFE_BUILTIN_NAMES = (
+    "abs", "all", "any", "bool", "dict", "enumerate", "float", "int", "len",
+    "list", "max", "min", "range", "reversed", "round", "set", "sorted", "str",
+    "sum", "tuple", "zip",
+)
+
+
+def _builtins_for(contract: int) -> dict:
+    if contract <= 1:
+        return {}
+    return {name: getattr(builtins, name) for name in SAFE_BUILTIN_NAMES}
+
+
+def _exec_worker(code: str, df_bytes: bytes, result_queue: multiprocessing.Queue,
+                 contract: int = EXEC_CONTRACT):
     """Worker function that runs in a subprocess to execute pandas code."""
     try:
         df = pickle.loads(df_bytes)
         namespace = {"df": df, "pd": pd}
-        exec(code, {"__builtins__": {}}, namespace)
+        exec(code, {"__builtins__": _builtins_for(contract)}, namespace)
         result = namespace.get("result")
         result_queue.put(("ok", pickle.dumps(result)))
     except Exception as exc:
@@ -173,7 +197,8 @@ def _stop_process(proc: multiprocessing.Process) -> None:
 
 
 def execute_pandas(
-    df: pd.DataFrame, code: str, timeout: float = _EXEC_TIMEOUT
+    df: pd.DataFrame, code: str, timeout: float = _EXEC_TIMEOUT,
+    contract: int = EXEC_CONTRACT,
 ) -> pd.DataFrame:
     """Execute a pandas expression on a copy of the DataFrame.
 
@@ -186,6 +211,9 @@ def execute_pandas(
         df: The source DataFrame.
         code: Pandas code string from the LLM.
         timeout: Seconds before the worker process is terminated.
+        contract: Execution contract version (see EXEC_CONTRACT). Only the
+            eval's offline re-score passes anything but the default, to
+            reproduce reports made under an earlier contract.
 
     Returns:
         The result DataFrame.
@@ -204,7 +232,7 @@ def execute_pandas(
     result_queue = multiprocessing.Queue()
 
     proc = multiprocessing.Process(
-        target=_exec_worker, args=(code, df_bytes, result_queue), daemon=True
+        target=_exec_worker, args=(code, df_bytes, result_queue, contract), daemon=True
     )
     proc.start()
     try:
@@ -237,6 +265,9 @@ def execute_pandas(
 
     if isinstance(result, pd.Series):
         result = result.to_frame()
+    elif contract >= 2 and pd.api.types.is_scalar(result):
+        # "How many ...?" naturally yields a number, not a frame.
+        result = pd.DataFrame({"result": [result]})
 
     if not isinstance(result, pd.DataFrame):
         raise ValueError(f"Expected DataFrame result, got {type(result).__name__}")
