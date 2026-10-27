@@ -1,0 +1,4 @@
+# The eval's case files are hashed in evals/PREREGISTRATION.md; keep their
+# bytes identical on every platform (no CRLF conversion on checkout).
+evals/*.jsonl text eol=lf
+results/*.json text eol=lf

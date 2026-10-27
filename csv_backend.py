@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import builtins
 import multiprocessing
 import os
 import pickle
+import queue
 import re
+import time
 
 import pandas as pd
 
@@ -148,20 +151,92 @@ def _validate_pandas_code(code: str) -> str | None:
 
 _EXEC_TIMEOUT = 30  # seconds
 
+# Version of the execution contract, recorded in every eval report so a saved
+# report can be re-scored under the rules it was produced with.
+#   1: no builtins at all; a result that is not a DataFrame/Series is an error.
+#   2: a small allowlist of builtins; a scalar result becomes a one-cell frame.
+#   3: one namespace for globals and locals, so lambdas, generator expressions
+#      and nested functions can see df, pd and the code's own variables.
+EXEC_CONTRACT = 3
 
-def _exec_worker(code: str, df_bytes: bytes, result_queue: multiprocessing.Queue):
+# Harmless builtins that ordinary pandas code reaches for. Deliberately absent:
+# type, object, getattr/setattr/delattr, hasattr, vars, dir, globals, locals,
+# open, input, print, eval, exec, compile, __import__, breakpoint, memoryview,
+# bytearray, bytes, map, filter, iter, next, callable, isinstance, issubclass.
+SAFE_BUILTIN_NAMES = (
+    "abs", "all", "any", "bool", "dict", "enumerate", "float", "int", "len",
+    "list", "max", "min", "range", "reversed", "round", "set", "sorted", "str",
+    "sum", "tuple", "zip",
+)
+
+
+def _builtins_for(contract: int) -> dict:
+    if contract <= 1:
+        return {}
+    return {name: getattr(builtins, name) for name in SAFE_BUILTIN_NAMES}
+
+
+def _exec_worker(code: str, df_bytes: bytes, result_queue: multiprocessing.Queue,
+                 contract: int = EXEC_CONTRACT) -> None:
     """Worker function that runs in a subprocess to execute pandas code."""
     try:
         df = pickle.loads(df_bytes)
         namespace = {"df": df, "pd": pd}
-        exec(code, {"__builtins__": {}}, namespace)
+        builtins_env = {"__builtins__": _builtins_for(contract)}
+        if contract >= 3:
+            namespace.update(builtins_env)
+            exec(code, namespace)
+        else:  # separate globals/locals: nested scopes cannot see namespace
+            exec(code, builtins_env, namespace)
         result = namespace.get("result")
         result_queue.put(("ok", pickle.dumps(result)))
     except Exception as exc:
         result_queue.put(("error", str(exc)))
 
 
-def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
+def _stop_process(proc: multiprocessing.Process) -> None:
+    """Terminate, then kill, a worker process that is still running."""
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(timeout=2)
+
+
+def _wait_for_result(proc: multiprocessing.Process, result_queue: multiprocessing.Queue,
+                     timeout: float) -> tuple[str, object]:
+    """Read the worker's (status, payload), reading before joining.
+
+    A child that has put a large result cannot exit until the parent drains
+    the pipe, so join-then-read would report any result over the pipe buffer
+    (~64 KB) as a timeout. Polling instead of one long get() also notices a
+    worker that died without a result (crash, OOM kill) without waiting out
+    the whole timeout.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return result_queue.get(timeout=0.2)
+        except queue.Empty:
+            if not proc.is_alive():
+                try:  # its result may have raced its exit
+                    return result_queue.get(timeout=1)
+                except queue.Empty:
+                    _stop_process(proc)
+                    raise ValueError("Execution produced no result.") from None
+            if time.monotonic() > deadline:
+                _stop_process(proc)
+                raise ValueError(
+                    f"Query execution timed out after {timeout} seconds. "
+                    "Try a simpler query."
+                ) from None
+
+
+def execute_pandas(
+    df: pd.DataFrame, code: str, timeout: float = _EXEC_TIMEOUT,
+    contract: int = EXEC_CONTRACT,
+) -> pd.DataFrame:
     """Execute a pandas expression on a copy of the DataFrame.
 
     The LLM-generated code should assign results to a variable called `result`.
@@ -172,6 +247,10 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     Args:
         df: The source DataFrame.
         code: Pandas code string from the LLM.
+        timeout: Seconds before the worker process is terminated.
+        contract: Execution contract version (see EXEC_CONTRACT). Only the
+            eval's offline re-score passes anything but the default, to
+            reproduce reports made under an earlier contract.
 
     Returns:
         The result DataFrame.
@@ -190,26 +269,13 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
     result_queue = multiprocessing.Queue()
 
     proc = multiprocessing.Process(
-        target=_exec_worker, args=(code, df_bytes, result_queue), daemon=True
+        target=_exec_worker, args=(code, df_bytes, result_queue, contract), daemon=True
     )
     proc.start()
-    proc.join(timeout=_EXEC_TIMEOUT)
+    status, payload = _wait_for_result(proc, result_queue, timeout)
+    proc.join(timeout=5)
+    _stop_process(proc)
 
-    if proc.is_alive():
-        proc.terminate()
-        proc.join(timeout=5)
-        if proc.is_alive():
-            proc.kill()
-            proc.join(timeout=2)
-        raise ValueError(
-            f"Query execution timed out after {_EXEC_TIMEOUT} seconds. "
-            "Try a simpler query."
-        )
-
-    if result_queue.empty():
-        raise ValueError("Execution produced no result.")
-
-    status, payload = result_queue.get_nowait()
     if status == "error":
         raise ValueError(f"Execution error: {payload}")
 
@@ -223,6 +289,9 @@ def execute_pandas(df: pd.DataFrame, code: str) -> pd.DataFrame:
 
     if isinstance(result, pd.Series):
         result = result.to_frame()
+    elif contract >= 2 and pd.api.types.is_scalar(result):
+        # "How many ...?" naturally yields a number, not a frame.
+        result = pd.DataFrame({"result": [result]})
 
     if not isinstance(result, pd.DataFrame):
         raise ValueError(f"Expected DataFrame result, got {type(result).__name__}")

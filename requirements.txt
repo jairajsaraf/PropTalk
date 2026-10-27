@@ -1,7 +1,8 @@
-streamlit
-pandas
-numpy
-plotly
-requests
-python-dotenv
-pyodbc
+# Runtime dependencies, pinned from a clean install on Python 3.13.17.
+# Transitive dependencies are left to the resolver.
+streamlit==1.66.1
+pandas==3.1.0
+numpy==2.5.4
+plotly==7.1.0
+requests==2.34.2
+python-dotenv==1.2.4
