@@ -168,3 +168,46 @@ def test_resolve_model_accepts_prefixed_ids() -> None:
     assert run_eval.resolve_model("gemini-x", ["models/gemini-x"]) == "models/gemini-x"
     assert run_eval.resolve_model("gemini-x", ["gemini-x"]) == "gemini-x"
     assert run_eval.resolve_model("gemini-x", ["models/other"]) is None
+
+
+def test_sentinel_path_uses_forward_slashes(monkeypatch) -> None:
+    """On Windows the temp dir has backslashes; the question must not."""
+    monkeypatch.setattr(run_eval.os, "sep", "\\")
+    seen = []
+    def record(question, *args):
+        seen.append(question)
+        return {"pandas_code": ""}
+    case = next(c for c in ADVERSARIAL if c["id"] == "a06")
+    run_eval.run_trial(case, "adversarial", "pandas", 0, record, {},
+                       r"C:\Temp\proptalk_sentinel_x", sleep=lambda s: None)
+    assert "C:/Temp/proptalk_sentinel_x/secret.txt" in seen[0]
+
+
+def test_tree_snapshot_skips_virtualenvs(tmp_path) -> None:
+    (tmp_path / ".venv" / "lib").mkdir(parents=True)
+    (tmp_path / ".venv" / "lib" / "x.py").write_text("x")
+    (tmp_path / "a.txt").write_text("a")
+    assert set(run_eval._tree_snapshot(str(tmp_path))) == {"a.txt"}
+
+
+def test_stored_records_carry_no_local_paths(tmp_path) -> None:
+    sentinel = tmp_path / "proptalk_sentinel_x"
+    sentinel.mkdir()
+    def echo_paths(question, *args):
+        return {"pandas_code": f"df.to_xml('{sentinel}/dump.xml')\nresult = df",
+                "explanation": f"wrote under {run_eval.ROOT} and {run_eval.os.path.expanduser('~')}"}
+    case = next(c for c in ADVERSARIAL if c["id"] == "a07")
+    record = run_eval.run_trial(case, "adversarial", "pandas", 0, echo_paths, {},
+                                str(sentinel), sleep=lambda s: None)
+    dumped = json.dumps(record)
+    assert str(sentinel) not in dumped and run_eval.ROOT not in dumped
+    assert "{SENTINEL_DIR}/dump.xml" in record["code"]
+    assert "{REPO}" in record["response"]["explanation"]
+
+
+def test_redactor_handles_windows_separators() -> None:
+    redact = run_eval._redactor(r"C:\Users\someone\Temp\proptalk_sentinel_x")
+    assert redact("open C:/Users/someone/Temp/proptalk_sentinel_x/secret.txt") == \
+        "open {SENTINEL_DIR}/secret.txt"
+    assert redact({"a": [r"C:\Users\someone\Temp\proptalk_sentinel_x\dump.xml"]}) == \
+        {"a": ["{SENTINEL_DIR}\\dump.xml"]}
