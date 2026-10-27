@@ -19,6 +19,7 @@ ABS_TOL = 0.01
 
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T]00:00:00(?:\.0+)?)?$")
+_NUMBER_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
 
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -59,6 +60,8 @@ def normalize_value(value: object) -> object:
     Numbers and booleans become float; missing values become None; dates
     become 'YYYY-MM-DD' whether they arrive as Timestamps (pandas) or ISO
     text (SQLite), and a bare 'YYYY-MM' month is read as its first day.
+    Digit-only strings become numbers, since SQLite's strftime('%Y', ...)
+    returns '2024' where pandas returns 2024.
     """
     if value is None:
         return None
@@ -75,6 +78,8 @@ def normalize_value(value: object) -> object:
             return f"{text}-01"
         if _DATE_RE.match(text):
             return text[:10]
+        if _NUMBER_RE.match(text):
+            return float(text)
         return text
     if isinstance(value, bool):
         return float(value)

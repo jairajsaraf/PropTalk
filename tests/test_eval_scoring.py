@@ -64,6 +64,10 @@ def test_pass_hat_k() -> None:
     (True, 1, True),
     ("HOUSTON", " HOUSTON ", True),
     ("HOUSTON", "houston", False),
+    ("2024", 2024, True),           # SQLite strftime('%Y') text vs pandas int
+    ("-3.5", -3.5, True),
+    ("MLS-100001", "MLS-100001", True),
+    ("77001A", 77001, False),
 ])
 def test_values_equal(a, b, equal) -> None:
     assert values_equal(a, b) is equal
