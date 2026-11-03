@@ -10,7 +10,8 @@ dev-only tool and is imported inside main(), so pytest never needs it:
 
 Steps: open the URL; wake a sleeping app; find the frame that holds the app
 (Community Cloud may serve it inside an iframe); click the first example; wait
-for a chart and a table; check the trust panel; take a screenshot.
+for the chart, then open the Table tab and wait for the table; check there is no
+leftover 'Done in ...' widget; check the trust panel; take a screenshot.
 """
 
 import argparse
@@ -97,12 +98,20 @@ def run(url: str, mobile: bool, check_trust: bool, screenshot: str) -> None:
                 raise SmokeFailure("find the first example button", example) from exc
             button.click()
 
-            for selector, what in (('.js-plotly-plot', "chart"), ('[data-testid="stDataFrame"]', "table")):
+            def _wait(selector: str, what: str) -> None:
                 try:
                     frame.locator(selector).first.wait_for(state="visible", timeout=ANSWER_TIMEOUT_MS)
                 except PlaywrightError as exc:
                     shown = frame.locator('[data-testid="stException"], [data-testid="stAlert"]').all_inner_texts()
                     raise SmokeFailure(f"wait for the {what}", f"page shows: {shown[:2]}") from exc
+
+            _wait(".js-plotly-plot", "chart")  # the Chart tab is first and open
+            # The table sits in its own tab; Streamlit does not show an inactive tab's content.
+            frame.get_by_role("tab", name=re.compile(r"^Table")).click()
+            _wait('[data-testid="stDataFrame"]', "table")
+
+            if frame.get_by_text(re.compile(r"^Done in \d")).count():
+                raise SmokeFailure("no leftover progress widget", "found a 'Done in ...' element")
 
             if frame.locator('[data-testid="stException"]').count():
                 raise SmokeFailure("no exception on the page", frame.locator('[data-testid="stException"]').first.inner_text())

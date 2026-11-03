@@ -13,7 +13,9 @@ import demo_cache
 import llm
 import session_budget
 import sqlite_backend
+import table_view
 import trust_panel
+import ui_style
 from chart_builder import build_chart
 from sql_guard import validate_query
 
@@ -28,9 +30,11 @@ st.cache_resource(bootstrap.ensure_sample_data)()
 
 st.set_page_config(
     page_title="PropTalk",
-    page_icon="🏠",
+    page_icon=":material/real_estate_agent:",
     layout="wide",
 )
+
+ui_style.inject()
 
 # ---------------------------------------------------------------------------
 # Session state initialization
@@ -71,11 +75,10 @@ def _restore_history_entry(entry: dict, table_display: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("### 🏠 PropTalk")
-    st.caption("Demo over synthetic Texas property data — no live database.")
-
     engine_label = st.radio(
-        "Query engine", list(ENGINE_LABELS.values()), index=0, key="engine_selector"
+        "Query engine", list(ENGINE_LABELS.values()), index=0, key="engine_selector",
+        help="Both engines run over the same synthetic tables. SQL runs in a locked-down "
+             "SQLite; pandas runs in a separate process on a copy of the data.",
     )
     mode = next(m for m, label in ENGINE_LABELS.items() if label == engine_label)
     backend = _BACKENDS[mode]
@@ -107,7 +110,7 @@ with st.sidebar:
     st.divider()
 
     # Schema explorer
-    with st.expander("📋 Schema Explorer"):
+    with st.expander("Schema explorer"):
         try:
             schema_info = backend.get_schema(selected_table_id)
             st.code(schema_info, language=None)
@@ -116,7 +119,7 @@ with st.sidebar:
             schema_info = ""
 
     # Query history
-    with st.expander("📜 Query History"):
+    with st.expander("Query history"):
         if st.session_state.query_history:
             if st.button("Clear History", key="clear_history"):
                 st.session_state.query_history = []
@@ -128,7 +131,7 @@ with st.sidebar:
                 st.button(
                     f"**{idx + 1}.** {entry['question']}",
                     key=f"history_{idx}",
-                    use_container_width=True,
+                    width="stretch",
                     on_click=_restore_history_entry,
                     args=(entry, table_display_by_id.get(entry.get("table_id"))),
                 )
@@ -142,7 +145,11 @@ with st.sidebar:
 # Main area
 # ---------------------------------------------------------------------------
 
-st.title("🏠 PropTalk")
+st.title("PropTalk")
+st.caption(
+    "Plain-English questions about synthetic Texas property data. "
+    "Every answer shows how it was produced."
+)
 
 # A missing key no longer stops the page: saved example answers need no key.
 api_key = os.getenv("LLM_API_KEY")
@@ -161,8 +168,6 @@ else:
     table_name_for_prompt = selected_display
 
 # Question input
-st.markdown("### 💬 Ask a question about the data")
-
 # Sync current_question into the text input widget before rendering
 if st.session_state.current_question:
     st.session_state.query_input = st.session_state.current_question
@@ -178,11 +183,15 @@ question = st.text_input(
 # Example question buttons (keyed by dataset so they re-render on switch)
 examples = config.get_example_questions(selected_display)
 if examples:
-    st.caption("**Try an example:**")
-    cols = st.columns(len(examples))
-    for i, example in enumerate(examples):
-        with cols[i]:
-            if st.button(example, key=f"example_{selected_table_id}_{i}", use_container_width=True):
+    st.caption("Try an example")
+    for row_start in range(0, len(examples), 2):
+        cols = st.columns(2)
+        for offset, example in enumerate(examples[row_start:row_start + 2]):
+            i = row_start + offset
+            if cols[offset].button(
+                example, key=f"example_{selected_table_id}_{i}",
+                icon=":material/arrow_outward:", width="stretch", wrap=True,
+            ):
                 st.session_state.current_question = example
                 st.rerun()
 
@@ -210,7 +219,7 @@ if question:
         elapsed = cached["elapsed"]
         query_elapsed = cached["query_elapsed"]
 
-        if st.button("Re-run query", key="rerun_query"):
+        if st.button("Re-run query", key="rerun_query", type="tertiary", icon=":material/refresh:"):
             st.session_state.last_result = None
             st.rerun()
     else:
@@ -243,7 +252,8 @@ if question:
             st.info(notice)
             st.stop()
 
-        with st.status("Generating query...", expanded=True, state="running") as status:
+        spinner_text = "Asking the model…" if source == "live" else "Running the query…"
+        with st.spinner(spinner_text):
             # Step 1: model output (saved or live)
             try:
                 if source == "cached":
@@ -261,7 +271,6 @@ if question:
             # Step 2: Validation + Execution
             if generated_code and not error_msg:
                 if mode == "sql":
-                    status.update(label="Validating query...", state="running")
                     is_valid, sanitized, reason = validate_query(
                         generated_code, backend.get_allowed_table_names()
                     )
@@ -276,7 +285,6 @@ if question:
                         generated_code = sanitized
 
                 if not error_msg:
-                    status.update(label="Executing query...", state="running")
                     query_start = time.time()
                     try:
                         if mode == "sql":
@@ -289,11 +297,6 @@ if question:
                     query_elapsed = time.time() - query_start
 
             elapsed = time.time() - start_time
-
-            if error_msg:
-                status.update(label="Error", state="error", expanded=True)
-            else:
-                status.update(label=f"Done in {elapsed:.1f}s", state="complete", expanded=False)
 
         # Cache result for reruns (download button, etc.)
         st.session_state.last_result = {
@@ -312,38 +315,48 @@ if question:
     # Display results
     # ---------------------------------------------------------------------------
 
+    st.divider()
+    answered = result_df is not None and not result_df.empty
+    row_count = len(result_df) if result_df is not None else 0
+
     if error_msg:
         st.error(error_msg)
-    elif result_df is not None:
-        if result_df.empty:
-            st.warning("No rows matched. Try broadening your filters.")
-        else:
-            chart_config = llm_response.get("chart_config") if llm_response else None
-            fig = build_chart(result_df, chart_config)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
+    elif result_df is not None and result_df.empty:
+        st.warning("No rows matched. Try broadening your filters.")
 
-            st.markdown(f"### 📋 Results ({len(result_df):,} rows)")
-            st.dataframe(result_df, use_container_width=True, height=400)
+    if answered:
+        explanation = llm_response.get("explanation", "") if llm_response else ""
+        if explanation:
+            st.markdown(f"#### {explanation}")
 
-            csv_data = result_df.to_csv(index=False)
+    trust_panel.render_strip(mode, source or "live", validation_result, row_count, query_elapsed)
+
+    if answered:
+        chart_config = llm_response.get("chart_config") if llm_response else None
+        fig = build_chart(result_df, chart_config)
+        tab_names = (["Chart"] if fig else []) + [f"Table ({row_count:,} rows)", "Query"]
+        tabs = iter(st.tabs(tab_names))
+        if fig:
+            with next(tabs):
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        with next(tabs):
+            st.dataframe(
+                result_df, width="stretch", hide_index=True,
+                column_config=table_view.column_config(result_df),
+            )
             st.download_button(
                 label="Download results as CSV",
-                data=csv_data,
+                data=result_df.to_csv(index=False),
                 file_name="proptalk_results.csv",
                 mime="text/csv",
             )
+        with next(tabs):
+            st.code(generated_code or "N/A", language=code_lang)
+            st.caption("This is the code that ran against the data, after validation.")
 
-            explanation = llm_response.get("explanation", "") if llm_response else ""
-            if explanation:
-                st.info(f"💡 {explanation}")
+    trust_panel.render(mode, source or "live", validation_result, row_count, query_elapsed)
 
-    trust_panel.render(
-        mode, source or "live", validation_result,
-        len(result_df) if result_df is not None else 0, query_elapsed,
-    )
-
-    with st.expander("🔍 Debug Details"):
+    with st.expander("Debug details"):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Generated Code:**")

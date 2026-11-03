@@ -21,40 +21,57 @@ EVAL_URL = "https://github.com/jairajsaraf/PropTalk#evaluation-results"
 @dataclass(frozen=True)
 class TrustCheck:
     label: str
-    detail: str
+    detail: str          # full wording, shown in the expandable details
+    short: str = ""      # badge wording for the strip; empty = not shown in the strip
+    tone: str = "gray"   # badge color: green (control held), red (control stopped it), blue, gray
 
 
 def _model_output(source: str) -> TrustCheck:
-    detail = "saved, executed live" if source == "cached" else "generated live"
-    return TrustCheck("Model output", detail)
+    if source == "cached":
+        return TrustCheck("Model output", "saved, executed live",
+                          "Saved model output · executed live", "blue")
+    return TrustCheck("Model output", "generated live", "Live model output")
 
 
 def build_checks(mode: str, source: str, validation_result: dict | None,
                  row_count: int, query_elapsed: float) -> list[TrustCheck]:
     """One check per control that applied to this answer."""
-    rows = TrustCheck("Rows returned", f"{row_count:,} in {query_elapsed:.2f}s")
+    rows = TrustCheck("Rows returned", f"{row_count:,} in {query_elapsed:.2f}s",
+                      f"{row_count:,} {'row' if row_count == 1 else 'rows'} · {query_elapsed:.2f}s")
     if mode == "sql":
         if validation_result is None:
-            guard = "not reached"
+            guard = TrustCheck("Guard", "not reached")
         elif validation_result.get("is_valid"):
-            guard = "SELECT-only, table whitelist: passed"
+            guard = TrustCheck("Guard", "SELECT-only, table whitelist: passed",
+                               ":material/check: Guard passed", "green")
         else:
-            guard = f"rejected: {validation_result.get('rejection_reason', 'unknown reason')}"
+            reason = validation_result.get("rejection_reason", "unknown reason")
+            guard = TrustCheck("Guard", f"rejected: {reason}", ":material/close: Guard rejected", "red")
         return [
             _model_output(source),
-            TrustCheck("Guard", guard),
+            guard,
             TrustCheck("Row cap", f"{sql_guard.MAX_ROWS:,} rows"),
-            TrustCheck("Engine", "read-only: authorizer allowlist + PRAGMA query_only"),
+            TrustCheck("Engine", "read-only: authorizer allowlist + PRAGMA query_only",
+                       ":material/lock: Read-only engine", "green"),
             TrustCheck("Time budget", f"{sqlite_backend.QUERY_TIME_BUDGET_SECONDS} s"),
             rows,
         ]
     return [
         _model_output(source),
         TrustCheck("Blocklist", "generated code is screened before it runs"),
-        TrustCheck("Isolation", "separate process, copy of the data"),
+        TrustCheck("Isolation", "separate process, copy of the data",
+                   ":material/lock: Isolated process", "green"),
         TrustCheck("Timeout", f"{csv_backend._EXEC_TIMEOUT} s"),
         rows,
     ]
+
+
+def strip(mode: str, source: str, validation_result: dict | None,
+          row_count: int, query_elapsed: float) -> str:
+    """One line of badges: what held, where the model output came from, how much came back.
+    Limits and wording stay in the expandable details."""
+    checks = build_checks(mode, source, validation_result, row_count, query_elapsed)
+    return " ".join(f":{c.tone}-badge[{c.short}]" for c in checks if c.short)
 
 
 def _resolve(path: str) -> str:
@@ -86,12 +103,21 @@ def eval_line(mode: str, metrics_path: str = METRICS_PATH) -> str | None:
         return None
 
 
-def render(mode: str, source: str, validation_result: dict | None,
-           row_count: int, query_elapsed: float) -> None:
-    """Draw the panel. Imported lazily so the helpers above stay Streamlit-free."""
+def render_strip(mode: str, source: str, validation_result: dict | None,
+                 row_count: int, query_elapsed: float) -> None:
+    """The glanceable proof line, shown with the answer."""
     import streamlit as st
 
-    with st.expander("How this answer was produced", expanded=True):
+    st.markdown(strip(mode, source, validation_result, row_count, query_elapsed))
+
+
+def render(mode: str, source: str, validation_result: dict | None,
+           row_count: int, query_elapsed: float) -> None:
+    """The full details, collapsed: every control, its limit, and the eval sentence.
+    Imported lazily so the helpers above stay Streamlit-free."""
+    import streamlit as st
+
+    with st.expander("How this answer was produced", expanded=False):
         for check in build_checks(mode, source, validation_result, row_count, query_elapsed):
             label_col, detail_col = st.columns([1, 4])
             label_col.markdown(f"**{check.label}**")
