@@ -6,6 +6,7 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 
+import bootstrap
 import config
 import csv_backend
 import llm
@@ -14,6 +15,9 @@ from chart_builder import build_chart
 from sql_guard import validate_query
 
 load_dotenv()
+
+# The CSVs are gitignored: generate them once per server process on a fresh deploy.
+st.cache_resource(bootstrap.ensure_sample_data)()
 
 # ---------------------------------------------------------------------------
 # Page configuration
