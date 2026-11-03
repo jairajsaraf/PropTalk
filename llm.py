@@ -33,6 +33,22 @@ def _get_api_key() -> str:
     return api_key
 
 
+def describe_llm_error(exc: Exception) -> str:
+    """Plain-English message for a failed model call (no stack trace, no raw body)."""
+    if isinstance(exc, requests.HTTPError):
+        status = exc.response.status_code if exc.response is not None else None
+        if status == 429:
+            return (
+                "The model's rate limit is reached right now. The example questions above "
+                "still work: they use saved model output, executed live against the data."
+            )
+        if status in (401, 403):
+            return "The model API rejected the key. The example questions above still work."
+    if isinstance(exc, requests.Timeout):
+        return "The model took too long to answer. Try again, or use an example question."
+    return f"LLM error: {exc}"
+
+
 def _parse_sse_stream(body: str) -> str:
     """Parse SSE (text/event-stream) response into concatenated content.
 

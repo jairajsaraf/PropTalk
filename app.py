@@ -9,7 +9,9 @@ from dotenv import load_dotenv
 import bootstrap
 import config
 import csv_backend
+import demo_cache
 import llm
+import session_budget
 import sqlite_backend
 from chart_builder import build_chart
 from sql_guard import validate_query
@@ -141,13 +143,8 @@ with st.sidebar:
 
 st.title("🏠 PropTalk")
 
+# A missing key no longer stops the page: saved example answers need no key.
 api_key = os.getenv("LLM_API_KEY")
-if not api_key:
-    st.error(
-        "**LLM_API_KEY not found.** "
-        "Copy `.env.example` to `.env` and add your LLM API key to get started."
-    )
-    st.stop()
 
 # Load schema for LLM context (may already be cached from sidebar)
 try:
@@ -208,6 +205,7 @@ if question:
         validation_result = cached["validation_result"]
         result_df = cached["result_df"]
         error_msg = cached["error_msg"]
+        source = cached.get("source")
         elapsed = cached["elapsed"]
         query_elapsed = cached["query_elapsed"]
 
@@ -223,17 +221,41 @@ if question:
         error_msg = None
         query_elapsed = 0.0
 
+        # Where the model output comes from, in order: saved example answer,
+        # then (only with a key and budget left) a live call.
+        source = None
+        notice = None
+        saved = demo_cache.lookup(question, selected_table_id, mode)
+        if saved is not None:
+            source = "cached"
+        elif not api_key:
+            notice = "Live questions are off in this deployment. Try an example question."
+        elif session_budget.remaining(st.session_state) == 0:
+            notice = (
+                f"This session has used its {session_budget.MAX_LIVE_CALLS_PER_SESSION} live "
+                "questions. The example questions still work; reload the page to start again."
+            )
+        else:
+            source = "live"
+            session_budget.consume(st.session_state)
+        if notice:
+            st.info(notice)
+            st.stop()
+
         with st.status("Generating query...", expanded=True, state="running") as status:
-            # Step 1: LLM query generation
+            # Step 1: model output (saved or live)
             try:
-                llm_response = llm.query_llm(
-                    question, schema_info, mode, table_name_for_prompt, selected_model
-                )
+                if source == "cached":
+                    llm_response = saved
+                else:
+                    llm_response = llm.query_llm(
+                        question, schema_info, mode, table_name_for_prompt, selected_model
+                    )
                 generated_code = llm_response.get(code_key, "")
             except ValueError as e:
                 error_msg = f"Configuration error: {e}"
             except Exception as e:
-                error_msg = f"LLM error: {e}"
+                error_msg = llm.describe_llm_error(e)
 
             # Step 2: Validation + Execution
             if generated_code and not error_msg:
@@ -280,6 +302,7 @@ if question:
             "validation_result": validation_result,
             "result_df": result_df,
             "error_msg": error_msg,
+            "source": source,
             "elapsed": elapsed,
             "query_elapsed": query_elapsed,
         }

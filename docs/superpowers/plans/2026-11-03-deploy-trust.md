@@ -58,14 +58,14 @@ This session may move from the cloud container to the owner's Windows machine pa
 - Produces: `bootstrap.ensure_sample_data() -> bool`. It returns `True` if it generated the data and `False` if all CSVs already existed. It runs `[sys.executable, <repo>/generate_sample_data.py]` via `subprocess.run(check=True)`, which is exactly the documented command, so the seeded output is identical. The file list comes from `config.TABLE_REGISTRY[*].csv_filename` inside `csv_backend.SAMPLE_DIR`.
 - In `app.py`: `st.cache_resource(bootstrap.ensure_sample_data)()` so it runs once per server process.
 
-- [ ] **Step 1: Write failing tests** in `tests/test_bootstrap.py`
+- [x] **Step 1: Write failing tests** in `tests/test_bootstrap.py`
   - `test_noop_when_all_csvs_present`: monkeypatch `os.path.exists` → `True`, spy `subprocess.run`; assert it returns `False` and the spy was never called.
   - `test_generates_when_any_csv_missing`: monkeypatch `os.path.exists` → `False` for one filename; assert it returns `True` and the spy was called once with `[sys.executable, path ending "generate_sample_data.py"]` and `check=True`.
-- [ ] **Step 2:** `python -m pytest tests/test_bootstrap.py -q`. Expected: FAIL (module missing).
-- [ ] **Step 3:** Implement `ensure_sample_data`, wire it into `app.py`, and add `.streamlit/config.toml` with `[theme] base = "light"` only.
-- [ ] **Step 4:** `python -m pytest tests/test_bootstrap.py tests/test_app.py -q`. Expected: PASS.
-- [ ] **Step 5: Real cold start:** move `sample_data/` aside, run `streamlit run app.py --server.headless true` for about 20 s, and confirm the CSVs reappear and the log has no traceback. Restore if needed.
-- [ ] **Step 6:** Commit `Generate sample data on first start` and push.
+- [x] **Step 2:** `python -m pytest tests/test_bootstrap.py -q`. Expected: FAIL (module missing).
+- [x] **Step 3:** Implement `ensure_sample_data`, wire it into `app.py`, and add `.streamlit/config.toml` with `[theme] base = "light"` only.
+- [x] **Step 4:** `python -m pytest tests/test_bootstrap.py tests/test_app.py -q`. Expected: PASS.
+- [x] **Step 5: Real cold start:** move `sample_data/` aside, run `streamlit run app.py --server.headless true` for about 20 s, and confirm the CSVs reappear and the log has no traceback. Restore if needed.
+- [x] **Step 6:** Commit `Generate sample data on first start` and push.
 
 ### Task 2: Saved example answers, per-session cap, plain errors
 
@@ -86,13 +86,13 @@ This session may move from the cloud container to the owner's Windows machine pa
 - In `app.py`, the source decision goes in this order: `demo_cache.lookup(...)` hit → `source = "cached"`; else no key → `st.info("Live questions are off in this deployment. Try an example question.")`, no call; else `remaining(...) == 0` → `st.info` naming the cap, no call; else live call, `consume(...)`, `source = "live"`. Put `source` into `st.session_state.last_result` so Task 5 can read it. Cached answers do not consume the budget.
 - `scripts/build_demo_cache.py`: for each `TableConfig` × mode in `("sql", "pandas")` × example question, call `llm.query_llm` with a 5 s sleep between calls (the eval's `min_interval_s`). Drop `_debug` and write JSON. 16 calls in total.
 
-- [ ] **Step 1: Write failing tests.**
+- [x] **Step 1: Write failing tests.**
   - `test_demo_cache.py`: `test_lookup_hit_ignores_case_and_spaces` (write a temp cache, point `CACHE_PATH` at it, look up `"  show ME the top 10 cities by transaction volume "` → dict), `test_lookup_miss_returns_none`, `test_lookup_strips_debug`.
   - `test_session_budget.py`: `test_remaining_starts_at_max`, `test_consume_decrements_and_floors_at_zero`.
   - `tests/test_app.py`: `test_example_served_from_cache_without_key`: no `LLM_API_KEY`; `llm.query_llm` patched to raise; cache contains the question with valid SQL. Assert no exception, one `plotly_chart`, and `query_llm` never called. `test_429_shows_plain_message`: patch `query_llm` to raise `requests.HTTPError` with `response.status_code = 429` and assert the 429 copy appears in `at.error` or `at.info`.
-- [ ] **Step 2:** Run the three test files. Expected: FAIL.
-- [ ] **Step 3:** Implement the modules, `describe_llm_error`, and the `app.py` source logic.
-- [ ] **Step 4:** Run the three test files plus `tests/test_app.py`. Expected: PASS.
+- [x] **Step 2:** Run the three test files. Expected: FAIL.
+- [x] **Step 3:** Implement the modules, `describe_llm_error`, and the `app.py` source logic.
+- [x] **Step 4:** Run the three test files plus `tests/test_app.py`. Expected: PASS.
 - [ ] **Step 5: ASK THE OWNER:** "Run 16 live calls to build `demo_cache.json`?" Wait for a yes.
 - [ ] **Step 6:** `python scripts/build_demo_cache.py`. Then run every cached entry through `validate_query` + `execute_query` (SQL) and `execute_pandas` (pandas) offline. Every entry must return a non-empty DataFrame. Any entry that fails is dropped from the JSON and listed for the owner.
 - [ ] **Step 7:** Commit `Serve example questions from saved model output; cap live calls per session` and push.
