@@ -13,6 +13,7 @@ import demo_cache
 import llm
 import session_budget
 import sqlite_backend
+import trust_panel
 from chart_builder import build_chart
 from sql_guard import validate_query
 
@@ -336,6 +337,11 @@ if question:
             explanation = llm_response.get("explanation", "") if llm_response else ""
             if explanation:
                 st.info(f"💡 {explanation}")
+
+    trust_panel.render(
+        mode, source or "live", validation_result,
+        len(result_df) if result_df is not None else 0, query_elapsed,
+    )
 
     with st.expander("🔍 Debug Details"):
         col1, col2 = st.columns(2)

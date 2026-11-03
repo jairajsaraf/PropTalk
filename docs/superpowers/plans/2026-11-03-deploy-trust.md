@@ -133,10 +133,10 @@ This session may move from the cloud container to the owner's Windows machine pa
   - Returns `None` if the file or a key is missing (never crash the panel).
 - Render: `st.expander("How this answer was produced", expanded=True)` with one row per check, then the eval line as a caption with a link to the README's evaluation section on GitHub.
 
-- [ ] **Step 1: Write failing tests:** `test_sql_checks_use_code_constants` (monkeypatch `sql_guard.MAX_ROWS` to 123 → a detail contains `"123"`), `test_cached_source_is_labeled`, `test_eval_line_sql_reads_metrics` (temp metrics file → `"23/25"` appears), `test_eval_line_flags_contract_mismatch`, `test_eval_line_missing_file_returns_none`.
-- [ ] **Step 2:** Run `pytest tests/test_trust_panel.py -q`. Expected: FAIL.
-- [ ] **Step 3:** Implement, wire into `app.py`, and apply the chosen theme.
-- [ ] **Step 4:** Run `pytest tests/test_trust_panel.py tests/test_app.py -q` and `python -m evals.publish --check`. Expected: PASS.
+- [x] **Step 1: Write failing tests:** `test_sql_checks_use_code_constants` (monkeypatch `sql_guard.MAX_ROWS` to 123 → a detail contains `"123"`), `test_cached_source_is_labeled`, `test_eval_line_sql_reads_metrics` (temp metrics file → `"23/25"` appears), `test_eval_line_flags_contract_mismatch`, `test_eval_line_missing_file_returns_none`.
+- [x] **Step 2:** Run `pytest tests/test_trust_panel.py -q`. Expected: FAIL.
+- [ ] **Step 3:** Implement, wire into `app.py`, and apply the chosen theme. _(panel implemented and wired; theme waits on the Task 4 pick)_
+- [x] **Step 4:** Run `pytest tests/test_trust_panel.py tests/test_app.py -q` and `python -m evals.publish --check`. Expected: PASS.
 - [ ] **Step 5:** Commit `Show how each answer was produced` (+ `Apply chosen theme`) and push. Streamlit Cloud redeploys on push.
 
 ### Task 6: Verify the live deployment

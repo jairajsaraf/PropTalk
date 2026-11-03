@@ -209,3 +209,33 @@ def test_live_call_consumes_budget_and_is_labeled_live(offline_app) -> None:
     assert len(calls) == 1
     assert at.session_state["live_calls_used"] == 1
     assert at.session_state["last_result"]["source"] == "live"
+
+
+def _panel(at):
+    panels = [e for e in at.expander if e.label == "How this answer was produced"]
+    assert len(panels) == 1, [e.label for e in at.expander]
+    return panels[0]
+
+
+def test_trust_panel_labels_a_saved_answer(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert not at.exception, at.exception
+    text = " ".join(m.value for m in _panel(at).markdown)
+    assert "saved, executed live" in text
+    assert "Guard" in text and "passed" in text
+
+
+def test_trust_panel_labels_a_live_answer(offline_app) -> None:
+    at, _ = offline_app("some typed question", key="k", cached=False)
+
+    assert not at.exception, at.exception
+    assert "generated live" in " ".join(m.value for m in _panel(at).markdown)
+
+
+def test_trust_panel_shows_a_guard_rejection(run_app) -> None:
+    at = run_app({"sql": "DELETE FROM deed_transactions", "chart_config": None, "explanation": ""})
+
+    assert [e.value for e in at.error if "Query rejected" in e.value]
+    text = " ".join(m.value for m in _panel(at).markdown)
+    assert "rejected" in text
