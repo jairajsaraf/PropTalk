@@ -101,12 +101,12 @@ This session may move from the cloud container to the owner's Windows machine pa
 
 **Files:** Modify `README.md` (live link under the title; one line under Limitations about the per-session cap and saved example output).
 
-- [ ] **Step 1:** Give the owner these steps:
+- [x] **Step 1:** Give the owner these steps:
   1. share.streamlit.io → **Create app** → repo `jairajsaraf/PropTalk`, branch `claude/clever-ptolemy-ehvssl`, main file `app.py`.
   2. **Advanced settings** → Python version **3.13** (the pins were resolved on 3.13; if 3.13 isn't offered, stop and tell Claude) → Secrets: `LLM_API_KEY = "..."`, plus `LLM_MODEL = "gemini-3.5-flash-lite"`.
   3. Pick a custom subdomain, e.g. `proptalk-<yourname>`. Deploy.
-- [ ] **Step 2:** Once the owner pastes the URL, run Task 6's smoke script against it now (a first pass). If it fails, read the Cloud logs the owner pastes and fix the problem before anything else.
-- [ ] **Step 3:** Add the link to the README, commit `Link the live deployment` and push. **Checkpoint: this must be done by T+60 min.**
+- [x] **Step 2:** Once the owner pastes the URL, run Task 6's smoke script against it now (a first pass). If it fails, read the Cloud logs the owner pastes and fix the problem before anything else.
+- [x] **Step 3:** Add the link to the README, commit `Link the live deployment` and push. **Checkpoint: this must be done by T+60 min.**
 
 ### Task 4: Mockups (in parallel with Task 3's deploy wait)
 
