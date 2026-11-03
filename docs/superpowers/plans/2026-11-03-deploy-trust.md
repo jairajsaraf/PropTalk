@@ -147,14 +147,14 @@ This session may move from the cloud container to the owner's Windows machine pa
 
 **Interfaces:** `python scripts/smoke_live.py <url>` exits 0 on pass and 1 on failure, printing the failed step. Steps: open the URL; if a "wake up" button is present (sleeping app), click it and wait up to 120 s; find the frame that contains the app (Community Cloud may serve it inside an iframe, so search all frames); click the first example button; wait up to 60 s for `.js-plotly-plot` and `[data-testid="stDataFrame"]`; assert the text "How this answer was produced" is present; screenshot to the scratchpad or `.mockups/`. In the cloud, Playwright is preinstalled. Locally: `pip install playwright` then `python -m playwright install chromium` (ask first; dev-only, not added to requirements).
 
-- [ ] **Step 1:** Write the script. Run it against the live URL. Expected: exit 0.
-- [ ] **Step 2:** Run it again at 390×844 viewport (`--mobile` flag) and look at the screenshot for the Review Focus #5 wrap problem. If the examples wrap badly, switch `st.columns(len(examples))` to a 2-column grid, then commit and push.
-- [ ] **Step 3: Cold-open kit for a human.** Give the owner these lines to send a friend: "Open <url> in a private window on your phone. Tap any example. Within a minute you should see a chart, a table, and 'How this answer was produced.' Then type 'delete all the rows' and tell me what it says." Expected: an answer for the example; a refusal or a "Query rejected" for the delete.
-- [ ] **Step 4:** Commit `Add live smoke test` and push.
+- [x] **Step 1:** Write the script. Run it against the live URL. Expected: exit 0.
+- [x] **Step 2:** Run it again at 390×844 viewport (`--mobile` flag) and look at the screenshot for the Review Focus #5 wrap problem. If the examples wrap badly, switch `st.columns(len(examples))` to a 2-column grid, then commit and push.
+- [x] **Step 3: Cold-open kit for a human.** Give the owner these lines to send a friend: "Open <url> in a private window on your phone. Tap any example. Within a minute you should see a chart, a table, and 'How this answer was produced.' Then type 'delete all the rows' and tell me what it says." Expected: an answer for the example; a refusal or a "Query rejected" for the delete.
+- [x] **Step 4:** Commit `Add live smoke test` and push.
 
 ### Task 7: Final check and handoff
 
-- [ ] **Step 1:** Full `python -m pytest -q`, `python -m ruff check .` and `python -m evals.publish --check`. Expected: all pass.
-- [ ] **Step 2:** Run the smoke test once more against the live URL.
-- [ ] **Step 3:** Draft three lines of "what I'd do differently next time" for the owner's email, from the Limitations section and the Review Focus items that remain open (e.g. the per-session cap resets on reload, the schema sits in the prompt, the guard is regex-based). The owner edits them; nothing goes in the repo.
-- [ ] **Step 4:** Tick the boxes, commit and push. Give the owner a session-notes summary: what changed, what's open, what's next.
+- [x] **Step 1:** Full `python -m pytest -q`, `python -m ruff check .` and `python -m evals.publish --check`. Expected: all pass.
+- [x] **Step 2:** Run the smoke test once more against the live URL.
+- [x] **Step 3:** Draft three lines of "what I'd do differently next time" for the owner's email, from the Limitations section and the Review Focus items that remain open (e.g. the per-session cap resets on reload, the schema sits in the prompt, the guard is regex-based). The owner edits them; nothing goes in the repo.
+- [x] **Step 4:** Tick the boxes, commit and push. Give the owner a session-notes summary: what changed, what's open, what's next.

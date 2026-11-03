@@ -317,3 +317,17 @@ def test_clicking_an_example_asks_it(offline_app) -> None:
     assert at.text_input(key="query_input").value == EXAMPLE
     assert len(at.get("plotly_chart")) == 1
     assert calls == []
+
+
+def test_failed_model_call_shows_no_proof(offline_app) -> None:
+    """When the model produced nothing, no engine ran: claiming 'Live model output' and
+    'Read-only engine' under the error would be a false proof."""
+    response = requests.Response()
+    response.status_code = 429
+    at, _ = offline_app("some typed question", key="k", cached=False,
+                        llm_raises=requests.HTTPError("429", response=response))
+
+    assert not at.exception, at.exception
+    assert at.error  # the plain message is still shown
+    assert not [m for m in at.markdown if "-badge[" in m.value]
+    assert not [e for e in at.expander if e.label == "How this answer was produced"]

@@ -329,7 +329,11 @@ if question:
         if explanation:
             st.markdown(f"#### {explanation}")
 
-    trust_panel.render_strip(mode, source or "live", validation_result, row_count, query_elapsed)
+    # Proof is shown only when the model's code reached the guard/engine; after a failed
+    # model call nothing ran, and badges would claim controls that never applied.
+    pipeline_ran = bool(generated_code)
+    if pipeline_ran:
+        trust_panel.render_strip(mode, source or "live", validation_result, row_count, query_elapsed)
 
     if answered:
         chart_config = llm_response.get("chart_config") if llm_response else None
@@ -354,7 +358,8 @@ if question:
             st.code(generated_code or "N/A", language=code_lang)
             st.caption("This is the code that ran against the data, after validation.")
 
-    trust_panel.render(mode, source or "live", validation_result, row_count, query_elapsed)
+    if pipeline_ran:
+        trust_panel.render(mode, source or "live", validation_result, row_count, query_elapsed)
 
     with st.expander("Debug details"):
         col1, col2 = st.columns(2)
