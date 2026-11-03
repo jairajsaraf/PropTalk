@@ -110,6 +110,8 @@ This session may move from the cloud container to the owner's Windows machine pa
 
 ### Task 4: Mockups (in parallel with Task 3's deploy wait)
 
+> **Replaced by owner decision (2026-11-03):** one implemented Streamlit-only design instead of three mockups. If the owner is unhappy, plan a larger effort with three mockups. See `docs/superpowers/handoffs/2026-11-03-deploy-trust-handoff.md`.
+
 **Files:** none committed. Mockups are artifacts in the cloud, or files in `.mockups/` locally.
 
 - [ ] **Step 1:** If running locally, complete the resume protocol's resource inventory first.
@@ -135,9 +137,9 @@ This session may move from the cloud container to the owner's Windows machine pa
 
 - [x] **Step 1: Write failing tests:** `test_sql_checks_use_code_constants` (monkeypatch `sql_guard.MAX_ROWS` to 123 → a detail contains `"123"`), `test_cached_source_is_labeled`, `test_eval_line_sql_reads_metrics` (temp metrics file → `"23/25"` appears), `test_eval_line_flags_contract_mismatch`, `test_eval_line_missing_file_returns_none`.
 - [x] **Step 2:** Run `pytest tests/test_trust_panel.py -q`. Expected: FAIL.
-- [ ] **Step 3:** Implement, wire into `app.py`, and apply the chosen theme. _(panel implemented and wired; theme waits on the Task 4 pick)_
+- [x] **Step 3:** Implement, wire into `app.py`, and apply the chosen theme. _(theme: one direction chosen by Claude, pending owner verdict)_
 - [x] **Step 4:** Run `pytest tests/test_trust_panel.py tests/test_app.py -q` and `python -m evals.publish --check`. Expected: PASS.
-- [ ] **Step 5:** Commit `Show how each answer was produced` (+ `Apply chosen theme`) and push. Streamlit Cloud redeploys on push.
+- [x] **Step 5:** Commit `Show how each answer was produced` (+ `Apply chosen theme`) and push. Streamlit Cloud redeploys on push.
 
 ### Task 6: Verify the live deployment
 

@@ -104,3 +104,46 @@ def test_eval_line_reads_the_real_committed_metrics() -> None:
     """The committed metrics file has the keys the panel reads."""
     assert trust_panel.eval_line("sql") is not None
     assert trust_panel.eval_line("pandas") is not None
+
+
+# --- the glanceable strip shown with every answer -------------------------------------------
+
+def test_strip_for_a_saved_sql_answer() -> None:
+    strip = trust_panel.strip("sql", "cached", PASSED, 4, 0.0123)
+
+    assert ":green-badge[" in strip and "Guard passed" in strip
+    assert "Saved model output" in strip and "executed live" in strip
+    assert "Read-only engine" in strip
+    assert "4 rows" in strip
+
+
+def test_strip_for_a_live_answer_does_not_claim_saved() -> None:
+    strip = trust_panel.strip("sql", "live", PASSED, 4, 0.01)
+
+    assert "Live model output" in strip
+    assert "Saved" not in strip
+
+
+def test_strip_shows_a_rejection_in_red() -> None:
+    rejected = {"is_valid": False, "sanitized_query": "", "rejection_reason": "Only SELECT is allowed"}
+
+    strip = trust_panel.strip("sql", "live", rejected, 0, 0.0)
+
+    assert ":red-badge[" in strip and "Guard rejected" in strip
+    assert "Guard passed" not in strip
+
+
+def test_strip_for_pandas_names_isolation_not_a_guard() -> None:
+    strip = trust_panel.strip("pandas", "live", None, 1, 0.2)
+
+    assert "Isolated process" in strip
+    assert "Guard" not in strip
+    assert "1 row" in strip and "1 rows" not in strip
+
+
+def test_strip_is_short_and_leaves_limits_to_the_details(monkeypatch) -> None:
+    monkeypatch.setattr(sql_guard, "MAX_ROWS", 123)
+
+    strip = trust_panel.strip("sql", "live", PASSED, 5, 0.01)
+
+    assert "123" not in strip  # limits live in the expandable details, not the strip

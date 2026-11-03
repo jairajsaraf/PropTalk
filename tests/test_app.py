@@ -239,3 +239,81 @@ def test_trust_panel_shows_a_guard_rejection(run_app) -> None:
     assert [e.value for e in at.error if "Query rejected" in e.value]
     text = " ".join(m.value for m in _panel(at).markdown)
     assert "rejected" in text
+
+
+# ---------------------------------------------------------------------------
+# Result layout: one lead, one proof strip, tabs instead of a long scroll
+# ---------------------------------------------------------------------------
+
+
+def test_saved_answer_leaves_no_progress_widget_behind(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert not at.exception, at.exception
+    assert len(at.status) == 0  # the "Done in 0.1s" dropdown carried no information
+
+
+def test_result_tabs_are_chart_table_query(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    rows = len(at.dataframe[0].value)
+    assert [t.label for t in at.tabs] == ["Chart", f"Table ({rows} rows)", "Query"]
+
+
+def test_no_chart_means_table_and_query_tabs_only(run_app) -> None:
+    at = run_app({"sql": "SELECT city FROM deed_transactions LIMIT 3",
+                  "chart_config": None, "explanation": ""})
+
+    assert [t.label for t in at.tabs] == ["Table (3 rows)", "Query"]
+
+
+def test_query_tab_shows_the_generated_code(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    query_tab = next(t for t in at.tabs if t.label == "Query")
+    assert any("FROM deed_transactions" in c.value for c in query_tab.code)
+
+
+def test_explanation_leads_the_answer_instead_of_an_info_box(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert any("top cities" in m.value for m in at.markdown)
+    assert not any("top cities" in i.value for i in at.info)
+
+
+def test_proof_strip_sits_with_the_answer(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    strips = [m.value for m in at.markdown if "-badge[" in m.value]
+    assert len(strips) == 1
+    assert "Saved model output" in strips[0] and "Guard passed" in strips[0]
+
+
+def test_table_fits_its_rows_and_hides_the_index(offline_app, monkeypatch) -> None:
+    import streamlit as st
+
+    real = st.dataframe
+    seen: list[dict] = []
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(st, "dataframe", spy)
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert not at.exception, at.exception
+    assert len(seen) == 1
+    assert not isinstance(seen[0].get("height"), int), "a fixed pixel height pads short results"
+    assert seen[0].get("hide_index") is True
+
+
+def test_clicking_an_example_asks_it(offline_app) -> None:
+    at, calls = offline_app("", key=None, cached=True)
+
+    at.button(key="example_Deed Transactions_0").click().run()
+
+    assert not at.exception, at.exception
+    assert at.text_input(key="query_input").value == EXAMPLE
+    assert len(at.get("plotly_chart")) == 1
+    assert calls == []
