@@ -1,0 +1,262 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "generated_at": "2026-11-03T08:06:31+00:00",
+  "entries": [
+    {
+      "question": "Show me the top 10 cities by transaction volume",
+      "table_id": "Deed Transactions",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT city, COUNT(*) AS txn_count FROM deed_transactions GROUP BY city ORDER BY txn_count DESC LIMIT 10",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "city",
+          "y": "txn_count",
+          "color": null,
+          "title": "Top 10 Cities by Transaction Volume"
+        },
+        "explanation": "Calculates the total number of deed transactions for each city and returns the top 10 cities with the highest volume."
+      }
+    },
+    {
+      "question": "What are the average sale prices by investor classification?",
+      "table_id": "Deed Transactions",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT investor_tier, AVG(sale_amount) AS avg_sale_amount, COUNT(*) AS transaction_count FROM deed_transactions GROUP BY investor_tier ORDER BY avg_sale_amount DESC LIMIT 100",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "investor_tier",
+          "y": "avg_sale_amount",
+          "color": null,
+          "title": "Average Sale Price by Investor Classification"
+        },
+        "explanation": "Calculates the average sale price and transaction count for each investor classification tier."
+      }
+    },
+    {
+      "question": "Show cash purchases over $500K in Houston in 2024",
+      "table_id": "Deed Transactions",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT sale_date, street_address, city, zip_code, sale_amount, buyer_name FROM deed_transactions WHERE cash_purchase = 'Y' AND sale_amount > 500000 AND city = 'HOUSTON' AND strftime('%Y', sale_date) = '2024' ORDER BY sale_amount DESC LIMIT 100",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "street_address",
+          "y": "sale_amount",
+          "color": null,
+          "title": "Cash Purchases Over $500K in Houston (2024)"
+        },
+        "explanation": "Lists cash real_estate transactions in Houston exceeding $500,000 for the year 2024, ordered by sale amount descending."
+      }
+    },
+    {
+      "question": "Monthly transaction trend for Harris County",
+      "table_id": "Deed Transactions",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT strftime('%Y-%m', sale_date) AS sale_month, COUNT(*) AS txn_count FROM deed_transactions WHERE county = 'HARRIS' GROUP BY sale_month ORDER BY sale_month LIMIT 100",
+        "chart_config": {
+          "chart_type": "line",
+          "x": "sale_month",
+          "y": "txn_count",
+          "color": null,
+          "title": "Monthly Transaction Trend - Harris County"
+        },
+        "explanation": "Monthly transaction count for Harris County over time."
+      }
+    },
+    {
+      "question": "Show me the top 10 cities by transaction volume",
+      "table_id": "Deed Transactions",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "result = df.groupby('city').size().reset_index(name='txn_count').sort_values('txn_count', ascending=False).head(10)",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "city",
+          "y": "txn_count",
+          "color": null,
+          "title": "Top 10 Cities by Transaction Volume"
+        },
+        "explanation": "Grouping by city, counting transaction records, and sorting to find the top 10 cities by volume."
+      }
+    },
+    {
+      "question": "What are the average sale prices by investor classification?",
+      "table_id": "Deed Transactions",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "result = df.groupby('investor_tier')['sale_amount'].mean().reset_index(name='avg_sale_amount').sort_values('avg_sale_amount', ascending=False)",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "investor_tier",
+          "y": "avg_sale_amount",
+          "color": null,
+          "title": "Average Sale Price by Investor Classification"
+        },
+        "explanation": "Calculates the average sale amount for each investor tier and sorts them in descending order."
+      }
+    },
+    {
+      "question": "Show cash purchases over $500K in Houston in 2024",
+      "table_id": "Deed Transactions",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "result = df[(df['cash_purchase'] == 'Y') & (df['sale_amount'] > 500000) & (df['city'] == 'HOUSTON') & (df['sale_date'] >= '2024-01-01') & (df['sale_date'] <= '2024-12-31')].sort_values('sale_amount', ascending=False).head(10000)",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "zip_code",
+          "y": "sale_amount",
+          "color": "investor_tier",
+          "title": "Cash Purchases Over $500K in Houston (2024)"
+        },
+        "explanation": "Filtering for cash purchases above $500,000 in Houston during the year 2024."
+      }
+    },
+    {
+      "question": "Monthly transaction trend for Harris County",
+      "table_id": "Deed Transactions",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "filtered = df[df['county'] == 'HARRIS'].copy()\nfiltered['sale_month'] = filtered['sale_date'].dt.to_period('M').dt.to_timestamp()\nresult = filtered.groupby('sale_month').size().reset_index(name='txn_count').sort_values('sale_month').head(10000)",
+        "chart_config": {
+          "chart_type": "line",
+          "x": "sale_month",
+          "y": "txn_count",
+          "color": null,
+          "title": "Monthly Transaction Trend - Harris County"
+        },
+        "explanation": "Grouping Harris County transactions by month to show the monthly trend over time."
+      }
+    },
+    {
+      "question": "Average days on market by city",
+      "table_id": "MLS Listings",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT City, AVG(DaysOnMarket) AS avg_days_on_market FROM mls_listings WHERE DaysOnMarket IS NOT NULL GROUP BY City ORDER BY avg_days_on_market DESC LIMIT 100",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "City",
+          "y": "avg_days_on_market",
+          "color": null,
+          "title": "Average Days on Market by City"
+        },
+        "explanation": "Calculates the average days on market for listings grouped by city, ordered from highest to lowest."
+      }
+    },
+    {
+      "question": "Show closed listings above $1M in The Woodlands",
+      "table_id": "MLS Listings",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT ListingId, City, ListPrice, ClosePrice, BedroomsTotal, BathroomsTotalInteger, LivingArea, CloseDate FROM mls_listings WHERE StandardStatus = 'Closed' AND City = 'The Woodlands' AND ClosePrice > 1000000 ORDER BY ClosePrice DESC LIMIT 100",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "ListingId",
+          "y": "ClosePrice",
+          "color": null,
+          "title": "Closed Listings Above $1M in The Woodlands"
+        },
+        "explanation": "Retrieves closed listings in The Woodlands with a close price above $1 million, ordered from highest to lowest price."
+      }
+    },
+    {
+      "question": "Price distribution by property type",
+      "table_id": "MLS Listings",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT PropertyType, ListPrice FROM mls_listings WHERE PropertyType IS NOT NULL AND ListPrice IS NOT NULL ORDER BY ListPrice LIMIT 100",
+        "chart_config": {
+          "chart_type": "histogram",
+          "x": "ListPrice",
+          "y": null,
+          "color": "PropertyType",
+          "title": "Price Distribution by Property Type"
+        },
+        "explanation": "Retrieves list prices grouped by property type to show the distribution of prices."
+      }
+    },
+    {
+      "question": "Monthly listing volume trend for 2024",
+      "table_id": "MLS Listings",
+      "mode": "sql",
+      "response": {
+        "sql": "SELECT strftime('%Y-%m', ListingContractDate) AS listing_month, COUNT(*) AS listing_count FROM mls_listings WHERE strftime('%Y', ListingContractDate) = '2024' GROUP BY listing_month ORDER BY listing_month LIMIT 100",
+        "chart_config": {
+          "chart_type": "line",
+          "x": "listing_month",
+          "y": "listing_count",
+          "color": null,
+          "title": "Monthly Listing Volume Trend for 2024"
+        },
+        "explanation": "Calculates the total number of new listings contracted each month in the year 2024."
+      }
+    },
+    {
+      "question": "Average days on market by city",
+      "table_id": "MLS Listings",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "result = df.groupby('City')['DaysOnMarket'].mean().reset_index(name='avg_days_on_market').sort_values('avg_days_on_market', ascending=False).head(20)",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "City",
+          "y": "avg_days_on_market",
+          "color": null,
+          "title": "Average Days on Market by City"
+        },
+        "explanation": "Calculates the average days on market for each city and returns the top 20 cities."
+      }
+    },
+    {
+      "question": "Show closed listings above $1M in The Woodlands",
+      "table_id": "MLS Listings",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "result = df[(df['StandardStatus'] == 'Closed') & (df['City'] == 'The Woodlands') & (df['ClosePrice'] > 1000000)].sort_values('ClosePrice', ascending=False).head(10000)",
+        "chart_config": {
+          "chart_type": "bar",
+          "x": "ListingId",
+          "y": "ClosePrice",
+          "color": "BedroomsTotal",
+          "title": "Closed Listings Above $1M in The Woodlands"
+        },
+        "explanation": "Filtering for closed listings in The Woodlands with a close price greater than $1 million."
+      }
+    },
+    {
+      "question": "Price distribution by property type",
+      "table_id": "MLS Listings",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "result = df[['PropertyType', 'ListPrice']].dropna().head(10000)",
+        "chart_config": {
+          "chart_type": "histogram",
+          "x": "ListPrice",
+          "y": null,
+          "color": "PropertyType",
+          "title": "Price Distribution by Property Type"
+        },
+        "explanation": "Extracts list price and property type for distribution analysis."
+      }
+    },
+    {
+      "question": "Monthly listing volume trend for 2024",
+      "table_id": "MLS Listings",
+      "mode": "pandas",
+      "response": {
+        "pandas_code": "filtered = df[df['ListingContractDate'].dt.year == 2024].copy()\nfiltered['ListingMonth'] = filtered['ListingContractDate'].dt.to_period('M').dt.to_timestamp()\nresult = filtered.groupby('ListingMonth').size().reset_index(name='ListingCount').sort_values('ListingMonth')",
+        "chart_config": {
+          "chart_type": "line",
+          "x": "ListingMonth",
+          "y": "ListingCount",
+          "color": null,
+          "title": "Monthly Listing Volume Trend for 2024"
+        },
+        "explanation": "Calculates the monthly count of new listings for the year 2024."
+      }
+    }
+  ]
+}
