@@ -93,9 +93,9 @@ This session may move from the cloud container to the owner's Windows machine pa
 - [x] **Step 2:** Run the three test files. Expected: FAIL.
 - [x] **Step 3:** Implement the modules, `describe_llm_error`, and the `app.py` source logic.
 - [x] **Step 4:** Run the three test files plus `tests/test_app.py`. Expected: PASS.
-- [ ] **Step 5: ASK THE OWNER:** "Run 16 live calls to build `demo_cache.json`?" Wait for a yes.
-- [ ] **Step 6:** `python scripts/build_demo_cache.py`. Then run every cached entry through `validate_query` + `execute_query` (SQL) and `execute_pandas` (pandas) offline. Every entry must return a non-empty DataFrame. Any entry that fails is dropped from the JSON and listed for the owner.
-- [ ] **Step 7:** Commit `Serve example questions from saved model output; cap live calls per session` and push.
+- [x] **Step 5: ASK THE OWNER:** "Run 16 live calls to build `demo_cache.json`?" Wait for a yes.
+- [x] **Step 6:** `python scripts/build_demo_cache.py`. Then run every cached entry through `validate_query` + `execute_query` (SQL) and `execute_pandas` (pandas) offline. Every entry must return a non-empty DataFrame. Any entry that fails is dropped from the JSON and listed for the owner.
+- [x] **Step 7:** Commit `Serve example questions from saved model output; cap live calls per session` and push.
 
 ### Task 3: Deploy (owner clicks; Claude verifies)
 
