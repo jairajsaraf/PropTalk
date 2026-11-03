@@ -107,7 +107,10 @@ def run(url: str, mobile: bool, check_trust: bool, screenshot: str) -> None:
 
             _wait(".js-plotly-plot", "chart")  # the Chart tab is first and open
             # The table sits in its own tab; Streamlit does not show an inactive tab's content.
-            frame.get_by_role("tab", name=re.compile(r"^Table")).click()
+            try:
+                frame.get_by_role("tab", name=re.compile(r"^Table")).click(timeout=15_000)
+            except PlaywrightError as exc:
+                raise SmokeFailure("open the Table tab", "no tab named 'Table...' (is the app running an older version?)") from exc
             _wait('[data-testid="stDataFrame"]', "table")
 
             if frame.get_by_text(re.compile(r"^Done in \d")).count():
