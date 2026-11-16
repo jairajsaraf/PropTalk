@@ -5,7 +5,10 @@
 Exits 0 on pass, 1 on failure (printing the failed step). Playwright is a
 dev-only tool and is imported inside main(), so pytest never needs it:
 
-    pip install playwright && python -m playwright install chromium
+    pip install playwright
+    playwright install chromium
+    (Install steps: https://playwright.dev/python/docs/intro and /docs/browsers.
+    Playwright is not in requirements*.txt on purpose.)
     (a preinstalled Chromium at /opt/pw-browsers/chromium is used as a fallback)
 
 Steps: open the URL; wake a sleeping app; find the frame that holds the app
