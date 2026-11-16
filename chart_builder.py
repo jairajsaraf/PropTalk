@@ -105,7 +105,14 @@ def build_chart(df: pd.DataFrame, chart_config: dict | None) -> go.Figure | None
 
     try:
         if chart_type == "bar":
-            fig = px.bar(df, x=x, y=y, color=color, title=title)
+            keys = [c for c in (x, color) if c]
+            vertical = bool(y) and pd.api.types.is_numeric_dtype(df[y])
+            if vertical and keys and df.duplicated(subset=keys).any():
+                # Repeated categories mean raw rows, not one value per bar:
+                # px.bar would stack them into a sum. Show their spread instead.
+                fig = px.box(df, x=x, y=y, color=color, title=title)
+            else:
+                fig = px.bar(df, x=x, y=y, color=color, title=title)
         elif chart_type == "line":
             fig = px.line(df, x=x, y=y, color=color, title=title)
         elif chart_type == "scatter":
