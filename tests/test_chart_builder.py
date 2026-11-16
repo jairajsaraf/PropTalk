@@ -17,6 +17,12 @@ def test_bar_over_one_row_per_category_stays_a_bar() -> None:
     assert build_chart(df, BAR).data[0].type == "bar"
 
 
+def test_horizontal_bar_with_tied_values_stays_a_bar() -> None:
+    df = pd.DataFrame({"txn_count": [5, 5, 9], "city": ["A", "B", "C"]})
+    config = {"chart_type": "bar", "x": "txn_count", "y": "city", "color": None, "title": "t"}
+    assert build_chart(df, config).data[0].type == "bar"
+
+
 def test_grouped_bar_with_unique_category_pairs_stays_a_bar() -> None:
     df = pd.DataFrame({"city": ["A", "A", "B"], "year": ["2023", "2024", "2024"], "n": [1, 2, 3]})
     config = {"chart_type": "bar", "x": "city", "y": "n", "color": "year", "title": "t"}
