@@ -163,22 +163,6 @@
       }
     },
     {
-      "question": "Price distribution by property type",
-      "table_id": "MLS Listings",
-      "mode": "sql",
-      "response": {
-        "sql": "SELECT PropertyType, ListPrice FROM mls_listings WHERE PropertyType IS NOT NULL AND ListPrice IS NOT NULL ORDER BY ListPrice LIMIT 100",
-        "chart_config": {
-          "chart_type": "histogram",
-          "x": "ListPrice",
-          "y": null,
-          "color": "PropertyType",
-          "title": "Price Distribution by Property Type"
-        },
-        "explanation": "Retrieves list prices grouped by property type to show the distribution of prices."
-      }
-    },
-    {
       "question": "Monthly listing volume trend for 2024",
       "table_id": "MLS Listings",
       "mode": "sql",
