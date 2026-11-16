@@ -211,6 +211,17 @@ def test_live_call_consumes_budget_and_is_labeled_live(offline_app) -> None:
     assert at.session_state["last_result"]["source"] == "live"
 
 
+def test_failed_live_call_does_not_use_up_the_session_cap(offline_app) -> None:
+    response = requests.Response()
+    response.status_code = 429
+    at, calls = offline_app("some typed question", key="k", cached=False,
+                            llm_raises=requests.HTTPError("429", response=response))
+
+    assert not at.exception, at.exception
+    assert len(calls) == 1
+    assert "live_calls_used" not in at.session_state  # never consumed: still 0 used
+
+
 def _panel(at):
     panels = [e for e in at.expander if e.label == "How this answer was produced"]
     assert len(panels) == 1, [e.label for e in at.expander]

@@ -249,7 +249,6 @@ if question:
             )
         else:
             source = "live"
-            session_budget.consume(st.session_state)
         if notice:
             st.info(notice)
             st.stop()
@@ -264,6 +263,7 @@ if question:
                     llm_response = llm.query_llm(
                         question, schema_info, mode, table_name_for_prompt, selected_model
                     )
+                    session_budget.consume(st.session_state)  # only a call that returned uses up the cap
                 generated_code = llm_response.get(code_key, "")
             except ValueError as e:
                 error_msg = f"Configuration error: {e}"
