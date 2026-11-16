@@ -111,8 +111,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{len(kept)} of {len(entries)} entries verified (guard + engine, non-empty result).")
     for entry, reason in dropped:
         print(f"  DROPPED [{entry['mode']}] {entry['table_id']}: {entry['question']!r} -> {reason}")
-    _write(kept, model, demo_cache.CACHE_PATH)
-    print(f"wrote {demo_cache.CACHE_PATH}")
+    if args.verify and not dropped:
+        print(f"{demo_cache.CACHE_PATH} left unchanged")
+    else:
+        _write(kept, model, demo_cache.CACHE_PATH)
+        print(f"wrote {demo_cache.CACHE_PATH}")
     return 0 if not dropped else 1
 
 

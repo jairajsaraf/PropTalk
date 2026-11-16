@@ -51,3 +51,19 @@ def test_verify_keeps_good_entries_and_reports_bad_ones() -> None:
     assert [e["question"] for e in kept] == ["q1", "q4"]
     assert sorted(e["question"] for e, _ in dropped) == ["q2", "q3", "q5"]
     assert all(reason for _, reason in dropped)
+
+
+def test_verify_with_nothing_dropped_leaves_the_file_unchanged(tmp_path, monkeypatch) -> None:
+    import json
+
+    import demo_cache
+
+    path = tmp_path / "demo_cache.json"
+    path.write_text(json.dumps({"model": "m", "generated_at": "old", "entries": [{"mode": "sql"}]}) + "\n",
+                    encoding="utf-8")
+    before = path.read_bytes()
+    monkeypatch.setattr(demo_cache, "CACHE_PATH", str(path))
+    monkeypatch.setattr(build_demo_cache, "verify_entries", lambda entries: (entries, []))
+
+    assert build_demo_cache.main(["--verify"]) == 0
+    assert path.read_bytes() == before
