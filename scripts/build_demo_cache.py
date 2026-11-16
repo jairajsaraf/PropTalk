@@ -1,5 +1,9 @@
 """Build demo_cache.json: the model's answer to every example question.
 
+A live rebuild re-adds the SQL "Price distribution by property type" entry, which
+was removed by hand because its query kept only the 100 cheapest listings.
+Review the new answer before deleting the test that guards its absence.
+
     python scripts/build_demo_cache.py            # LIVE: one LLM call per table x engine x example
     python scripts/build_demo_cache.py --verify   # offline: re-check the existing demo_cache.json
 

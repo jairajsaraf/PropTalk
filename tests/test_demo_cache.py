@@ -80,3 +80,13 @@ def test_lookup_sees_a_rewritten_file(cache_file) -> None:
     os.utime(cache_file, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
 
     assert demo_cache.lookup(QUESTION, "Deed Transactions", "sql")["sql"] == "SELECT 2"
+
+
+def test_the_biased_price_distribution_sql_entry_is_not_saved() -> None:
+    """The saved SQL kept only the 100 cheapest listings, so the histogram was wrong.
+
+    The entry was removed by hand. A live rebuild of demo_cache.json re-adds it;
+    this test fails until the new answer has been reviewed.
+    """
+    assert demo_cache.lookup("Price distribution by property type", "MLS Listings", "sql") is None
+    assert demo_cache.lookup("Price distribution by property type", "MLS Listings", "pandas") is not None
