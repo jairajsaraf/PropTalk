@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "generated_at_commit": "2dcde466c8d87b87317d767f56f29f8379b7bb59",
-  "working_tree_dirty": true,
+  "generated_at_commit": "a41343f2c7dd7ea78aef32dcc466a2177e82ea82",
+  "working_tree_dirty": false,
   "bars": {
     "accuracy_rep0": 0.8,
     "validator_pass_rate": 0.95,

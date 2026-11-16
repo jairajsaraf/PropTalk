@@ -6,14 +6,23 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 
+import bootstrap
 import config
 import csv_backend
+import demo_cache
 import llm
+import session_budget
 import sqlite_backend
+import table_view
+import trust_panel
+import ui_style
 from chart_builder import build_chart
 from sql_guard import validate_query
 
 load_dotenv()
+
+# The CSVs are gitignored: generate them once per server process on a fresh deploy.
+st.cache_resource(bootstrap.ensure_sample_data)()
 
 # ---------------------------------------------------------------------------
 # Page configuration
@@ -21,9 +30,11 @@ load_dotenv()
 
 st.set_page_config(
     page_title="PropTalk",
-    page_icon="🏠",
+    page_icon=":material/real_estate_agent:",
     layout="wide",
 )
+
+ui_style.inject()
 
 # ---------------------------------------------------------------------------
 # Session state initialization
@@ -64,11 +75,10 @@ def _restore_history_entry(entry: dict, table_display: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("### 🏠 PropTalk")
-    st.caption("Demo over synthetic Texas property data — no live database.")
-
     engine_label = st.radio(
-        "Query engine", list(ENGINE_LABELS.values()), index=0, key="engine_selector"
+        "Query engine", list(ENGINE_LABELS.values()), index=0, key="engine_selector",
+        help="Both engines run over the same synthetic tables. SQL runs in a locked-down "
+             "SQLite; pandas runs in a separate process on a copy of the data.",
     )
     mode = next(m for m, label in ENGINE_LABELS.items() if label == engine_label)
     backend = _BACKENDS[mode]
@@ -100,7 +110,7 @@ with st.sidebar:
     st.divider()
 
     # Schema explorer
-    with st.expander("📋 Schema Explorer"):
+    with st.expander("Schema explorer"):
         try:
             schema_info = backend.get_schema(selected_table_id)
             st.code(schema_info, language=None)
@@ -109,7 +119,7 @@ with st.sidebar:
             schema_info = ""
 
     # Query history
-    with st.expander("📜 Query History"):
+    with st.expander("Query history"):
         if st.session_state.query_history:
             if st.button("Clear History", key="clear_history"):
                 st.session_state.query_history = []
@@ -121,7 +131,7 @@ with st.sidebar:
                 st.button(
                     f"**{idx + 1}.** {entry['question']}",
                     key=f"history_{idx}",
-                    use_container_width=True,
+                    width="stretch",
                     on_click=_restore_history_entry,
                     args=(entry, table_display_by_id.get(entry.get("table_id"))),
                 )
@@ -135,15 +145,14 @@ with st.sidebar:
 # Main area
 # ---------------------------------------------------------------------------
 
-st.title("🏠 PropTalk")
+st.title("PropTalk")
+st.caption(
+    "Plain-English questions about synthetic Texas property data. "
+    "Every answer shows how it was produced."
+)
 
+# A missing key no longer stops the page: saved example answers need no key.
 api_key = os.getenv("LLM_API_KEY")
-if not api_key:
-    st.error(
-        "**LLM_API_KEY not found.** "
-        "Copy `.env.example` to `.env` and add your LLM API key to get started."
-    )
-    st.stop()
 
 # Load schema for LLM context (may already be cached from sidebar)
 try:
@@ -159,8 +168,6 @@ else:
     table_name_for_prompt = selected_display
 
 # Question input
-st.markdown("### 💬 Ask a question about the data")
-
 # Sync current_question into the text input widget before rendering
 if st.session_state.current_question:
     st.session_state.query_input = st.session_state.current_question
@@ -176,11 +183,15 @@ question = st.text_input(
 # Example question buttons (keyed by dataset so they re-render on switch)
 examples = config.get_example_questions(selected_display)
 if examples:
-    st.caption("**Try an example:**")
-    cols = st.columns(len(examples))
-    for i, example in enumerate(examples):
-        with cols[i]:
-            if st.button(example, key=f"example_{selected_table_id}_{i}", use_container_width=True):
+    st.caption("Try an example")
+    for row_start in range(0, len(examples), 2):
+        cols = st.columns(2)
+        for offset, example in enumerate(examples[row_start:row_start + 2]):
+            i = row_start + offset
+            if cols[offset].button(
+                example, key=f"example_{selected_table_id}_{i}",
+                icon=":material/arrow_outward:", width="stretch", wrap=True,
+            ):
                 st.session_state.current_question = example
                 st.rerun()
 
@@ -202,12 +213,14 @@ if question:
         llm_response = cached["llm_response"]
         generated_code = cached["generated_code"]
         validation_result = cached["validation_result"]
+        engine_ran = cached.get("engine_ran", True)
         result_df = cached["result_df"]
         error_msg = cached["error_msg"]
+        source = cached.get("source")
         elapsed = cached["elapsed"]
         query_elapsed = cached["query_elapsed"]
 
-        if st.button("Re-run query", key="rerun_query"):
+        if st.button("Re-run query", key="rerun_query", type="tertiary", icon=":material/refresh:"):
             st.session_state.last_result = None
             st.rerun()
     else:
@@ -215,26 +228,51 @@ if question:
         llm_response = None
         generated_code = None
         validation_result = None
+        engine_ran = True  # False once the guard or blocklist stops the code before any engine runs
         result_df = None
         error_msg = None
         query_elapsed = 0.0
 
-        with st.status("Generating query...", expanded=True, state="running") as status:
-            # Step 1: LLM query generation
+        # Where the model output comes from, in order: saved example answer,
+        # then (only with a key and budget left) a live call.
+        source = None
+        notice = None
+        saved = demo_cache.lookup(question, selected_table_id, mode)
+        if saved is not None:
+            source = "cached"
+        elif not api_key:
+            notice = "Live questions are off in this deployment. Try an example question."
+        elif session_budget.remaining(st.session_state) == 0:
+            notice = (
+                f"This session has used its {session_budget.MAX_LIVE_CALLS_PER_SESSION} live "
+                "questions. The example questions still work; reload the page to start again."
+            )
+        else:
+            source = "live"
+        if notice:
+            st.info(notice)
+            st.stop()
+
+        spinner_text = "Asking the model…" if source == "live" else "Running the query…"
+        with st.spinner(spinner_text):
+            # Step 1: model output (saved or live)
             try:
-                llm_response = llm.query_llm(
-                    question, schema_info, mode, table_name_for_prompt, selected_model
-                )
+                if source == "cached":
+                    llm_response = saved
+                else:
+                    llm_response = llm.query_llm(
+                        question, schema_info, mode, table_name_for_prompt, selected_model
+                    )
+                    session_budget.consume(st.session_state)  # only a call that returned uses up the cap
                 generated_code = llm_response.get(code_key, "")
             except ValueError as e:
                 error_msg = f"Configuration error: {e}"
             except Exception as e:
-                error_msg = f"LLM error: {e}"
+                error_msg = llm.describe_llm_error(e)
 
             # Step 2: Validation + Execution
             if generated_code and not error_msg:
                 if mode == "sql":
-                    status.update(label="Validating query...", state="running")
                     is_valid, sanitized, reason = validate_query(
                         generated_code, backend.get_allowed_table_names()
                     )
@@ -244,12 +282,14 @@ if question:
                         "rejection_reason": reason,
                     }
                     if not is_valid:
+                        engine_ran = False
                         error_msg = f"Query rejected: {reason}"
                     else:
                         generated_code = sanitized
+                elif csv_backend._validate_pandas_code(generated_code):
+                    engine_ran = False
 
                 if not error_msg:
-                    status.update(label="Executing query...", state="running")
                     query_start = time.time()
                     try:
                         if mode == "sql":
@@ -263,19 +303,16 @@ if question:
 
             elapsed = time.time() - start_time
 
-            if error_msg:
-                status.update(label="Error", state="error", expanded=True)
-            else:
-                status.update(label=f"Done in {elapsed:.1f}s", state="complete", expanded=False)
-
         # Cache result for reruns (download button, etc.)
         st.session_state.last_result = {
             "cache_key": cache_key,
             "llm_response": llm_response,
             "generated_code": generated_code,
             "validation_result": validation_result,
+            "engine_ran": engine_ran,
             "result_df": result_df,
             "error_msg": error_msg,
+            "source": source,
             "elapsed": elapsed,
             "query_elapsed": query_elapsed,
         }
@@ -284,33 +321,53 @@ if question:
     # Display results
     # ---------------------------------------------------------------------------
 
+    st.divider()
+    answered = result_df is not None and not result_df.empty
+    row_count = len(result_df) if result_df is not None else 0
+
     if error_msg:
         st.error(error_msg)
-    elif result_df is not None:
-        if result_df.empty:
-            st.warning("No rows matched. Try broadening your filters.")
-        else:
-            chart_config = llm_response.get("chart_config") if llm_response else None
-            fig = build_chart(result_df, chart_config)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
+    elif result_df is not None and result_df.empty:
+        st.warning("No rows matched. Try broadening your filters.")
 
-            st.markdown(f"### 📋 Results ({len(result_df):,} rows)")
-            st.dataframe(result_df, use_container_width=True, height=400)
+    if answered:
+        explanation = llm_response.get("explanation", "") if llm_response else ""
+        if explanation:
+            st.markdown(f"#### {explanation}")
 
-            csv_data = result_df.to_csv(index=False)
+    # Proof is shown only when the model's code reached the guard/engine; after a failed
+    # model call nothing ran, and badges would claim controls that never applied.
+    pipeline_ran = bool(generated_code)
+    if pipeline_ran:
+        trust_panel.render_strip(mode, source or "live", validation_result, row_count, query_elapsed, engine_ran)
+
+    if answered:
+        chart_config = llm_response.get("chart_config") if llm_response else None
+        fig = build_chart(result_df, chart_config)
+        tab_names = (["Chart"] if fig else []) + [f"Table ({row_count:,} rows)", "Query"]
+        tabs = iter(st.tabs(tab_names))
+        if fig:
+            with next(tabs):
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        with next(tabs):
+            st.dataframe(
+                result_df, width="stretch", hide_index=True,
+                column_config=table_view.column_config(result_df),
+            )
             st.download_button(
                 label="Download results as CSV",
-                data=csv_data,
+                data=result_df.to_csv(index=False),
                 file_name="proptalk_results.csv",
                 mime="text/csv",
             )
+        with next(tabs):
+            st.code(generated_code or "N/A", language=code_lang)
+            st.caption("This is the code that ran against the data, after validation.")
 
-            explanation = llm_response.get("explanation", "") if llm_response else ""
-            if explanation:
-                st.info(f"💡 {explanation}")
+    if pipeline_ran:
+        trust_panel.render(mode, source or "live", validation_result, row_count, query_elapsed, engine_ran)
 
-    with st.expander("🔍 Debug Details"):
+    with st.expander("Debug details"):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Generated Code:**")

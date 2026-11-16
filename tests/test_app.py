@@ -5,6 +5,7 @@ llm.query_llm is replaced, and requests.post is made to fail loudly so
 any accidental network call breaks the test.
 """
 
+import json
 import os
 
 import pytest
@@ -102,3 +103,242 @@ def test_pandas_engine_accepts_a_scalar_answer(run_app) -> None:
     }, engine="pandas")
     assert not at.error
     assert at.dataframe[0].value.iloc[0, 0] == 1358
+
+
+# ---------------------------------------------------------------------------
+# Saved example answers, per-session cap, plain errors
+# ---------------------------------------------------------------------------
+
+EXAMPLE = "Show me the top 10 cities by transaction volume"
+EXAMPLE_SQL = (
+    "SELECT city, COUNT(*) AS n FROM deed_transactions GROUP BY city ORDER BY n DESC LIMIT 10"
+)
+
+
+@pytest.fixture
+def offline_app(monkeypatch, tmp_path):
+    """Run the app with no network, a temp demo cache, and query_llm replaced."""
+    import demo_cache
+
+    def _no_network(*args, **kwargs):
+        raise AssertionError("network call attempted during an offline test")
+
+    monkeypatch.setattr(requests, "post", _no_network)
+    monkeypatch.setattr(demo_cache, "CACHE_PATH", str(tmp_path / "demo_cache.json"))
+    calls: list[tuple] = []
+
+    def _run(question: str, *, key: str | None, cached: bool, llm_raises: Exception | None = None,
+             used: int = 0):
+        if key:
+            monkeypatch.setenv("LLM_API_KEY", key)
+        else:
+            monkeypatch.delenv("LLM_API_KEY", raising=False)
+        if cached:
+            (tmp_path / "demo_cache.json").write_text(json.dumps({
+                "model": "m", "generated_at": "2026-11-03T00:00:00+00:00",
+                "entries": [{"question": EXAMPLE, "table_id": "Deed Transactions", "mode": "sql",
+                             "response": {"sql": EXAMPLE_SQL, "explanation": "top cities",
+                                          "chart_config": {"chart_type": "bar", "x": "city",
+                                                           "y": "n", "color": None, "title": "t"}}}],
+            }))
+
+        def _fake(*args, **kwargs):
+            calls.append(args)
+            if llm_raises is not None:
+                raise llm_raises
+            return {"sql": EXAMPLE_SQL, "chart_config": None, "explanation": "", "_debug": {}}
+
+        monkeypatch.setattr(llm, "query_llm", _fake)
+        at = AppTest.from_file(APP, default_timeout=60)
+        if used:
+            at.session_state["live_calls_used"] = used
+        at.run()
+        at.text_input(key="query_input").set_value(question).run()
+        return at, calls
+
+    return _run
+
+
+def test_example_served_from_cache_without_key(offline_app) -> None:
+    messy = "  show ME the top 10 cities by   transaction volume "
+    at, calls = offline_app(messy, key=None, cached=True,
+                            llm_raises=AssertionError("query_llm must not be called"))
+
+    assert not at.exception, at.exception
+    assert len(at.get("plotly_chart")) == 1
+    assert calls == []
+    assert at.session_state["last_result"]["source"] == "cached"
+    assert "live_calls_used" not in at.session_state  # saved answers cost no live budget
+
+
+def test_429_shows_plain_message(offline_app) -> None:
+    response = requests.Response()
+    response.status_code = 429
+    at, _ = offline_app("some typed question", key="k", cached=False,
+                        llm_raises=requests.HTTPError("429", response=response))
+
+    assert not at.exception, at.exception
+    shown = [e.value for e in at.error] + [i.value for i in at.info]
+    assert any("rate limit is reached" in text and "still work" in text for text in shown), shown
+    assert not any("Traceback" in text for text in shown)
+
+
+def test_typed_question_without_key_says_live_is_off(offline_app) -> None:
+    at, calls = offline_app("some typed question", key=None, cached=False)
+
+    assert not at.exception, at.exception
+    assert calls == []
+    assert any("Live questions are off in this deployment" in i.value for i in at.info)
+
+
+def test_exhausted_budget_blocks_live_call(offline_app) -> None:
+    import session_budget
+
+    at, calls = offline_app("some typed question", key="k", cached=False,
+                            used=session_budget.MAX_LIVE_CALLS_PER_SESSION)
+
+    assert not at.exception, at.exception
+    assert calls == []
+    assert any(str(session_budget.MAX_LIVE_CALLS_PER_SESSION) in i.value for i in at.info)
+
+
+def test_live_call_consumes_budget_and_is_labeled_live(offline_app) -> None:
+    at, calls = offline_app("some typed question", key="k", cached=False)
+
+    assert not at.exception, at.exception
+    assert len(calls) == 1
+    assert at.session_state["live_calls_used"] == 1
+    assert at.session_state["last_result"]["source"] == "live"
+
+
+def test_failed_live_call_does_not_use_up_the_session_cap(offline_app) -> None:
+    response = requests.Response()
+    response.status_code = 429
+    at, calls = offline_app("some typed question", key="k", cached=False,
+                            llm_raises=requests.HTTPError("429", response=response))
+
+    assert not at.exception, at.exception
+    assert len(calls) == 1
+    assert "live_calls_used" not in at.session_state  # never consumed: still 0 used
+
+
+def _panel(at):
+    panels = [e for e in at.expander if e.label == "How this answer was produced"]
+    assert len(panels) == 1, [e.label for e in at.expander]
+    return panels[0]
+
+
+def test_trust_panel_labels_a_saved_answer(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert not at.exception, at.exception
+    text = " ".join(m.value for m in _panel(at).markdown)
+    assert "saved, executed live" in text
+    assert "Guard" in text and "passed" in text
+
+
+def test_trust_panel_labels_a_live_answer(offline_app) -> None:
+    at, _ = offline_app("some typed question", key="k", cached=False)
+
+    assert not at.exception, at.exception
+    assert "generated live" in " ".join(m.value for m in _panel(at).markdown)
+
+
+def test_trust_panel_shows_a_guard_rejection(run_app) -> None:
+    at = run_app({"sql": "DELETE FROM deed_transactions", "chart_config": None, "explanation": ""})
+
+    assert [e.value for e in at.error if "Query rejected" in e.value]
+    text = " ".join(m.value for m in _panel(at).markdown)
+    assert "rejected" in text
+
+
+# ---------------------------------------------------------------------------
+# Result layout: one lead, one proof strip, tabs instead of a long scroll
+# ---------------------------------------------------------------------------
+
+
+def test_saved_answer_leaves_no_progress_widget_behind(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert not at.exception, at.exception
+    assert len(at.status) == 0  # the "Done in 0.1s" dropdown carried no information
+
+
+def test_result_tabs_are_chart_table_query(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    rows = len(at.dataframe[0].value)
+    assert [t.label for t in at.tabs] == ["Chart", f"Table ({rows} rows)", "Query"]
+
+
+def test_no_chart_means_table_and_query_tabs_only(run_app) -> None:
+    at = run_app({"sql": "SELECT city FROM deed_transactions LIMIT 3",
+                  "chart_config": None, "explanation": ""})
+
+    assert [t.label for t in at.tabs] == ["Table (3 rows)", "Query"]
+
+
+def test_query_tab_shows_the_generated_code(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    query_tab = next(t for t in at.tabs if t.label == "Query")
+    assert any("FROM deed_transactions" in c.value for c in query_tab.code)
+
+
+def test_explanation_leads_the_answer_instead_of_an_info_box(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert any("top cities" in m.value for m in at.markdown)
+    assert not any("top cities" in i.value for i in at.info)
+
+
+def test_proof_strip_sits_with_the_answer(offline_app) -> None:
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    strips = [m.value for m in at.markdown if "-badge[" in m.value]
+    assert len(strips) == 1
+    assert "Saved model output" in strips[0] and "Guard passed" in strips[0]
+
+
+def test_table_fits_its_rows_and_hides_the_index(offline_app, monkeypatch) -> None:
+    import streamlit as st
+
+    real = st.dataframe
+    seen: list[dict] = []
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(st, "dataframe", spy)
+    at, _ = offline_app(EXAMPLE, key=None, cached=True)
+
+    assert not at.exception, at.exception
+    assert len(seen) == 1
+    assert not isinstance(seen[0].get("height"), int), "a fixed pixel height pads short results"
+    assert seen[0].get("hide_index") is True
+
+
+def test_clicking_an_example_asks_it(offline_app) -> None:
+    at, calls = offline_app("", key=None, cached=True)
+
+    at.button(key="example_Deed Transactions_0").click().run()
+
+    assert not at.exception, at.exception
+    assert at.text_input(key="query_input").value == EXAMPLE
+    assert len(at.get("plotly_chart")) == 1
+    assert calls == []
+
+
+def test_failed_model_call_shows_no_proof(offline_app) -> None:
+    """When the model produced nothing, no engine ran: claiming 'Live model output' and
+    'Read-only engine' under the error would be a false proof."""
+    response = requests.Response()
+    response.status_code = 429
+    at, _ = offline_app("some typed question", key="k", cached=False,
+                        llm_raises=requests.HTTPError("429", response=response))
+
+    assert not at.exception, at.exception
+    assert at.error  # the plain message is still shown
+    assert not [m for m in at.markdown if "-badge[" in m.value]
+    assert not [e for e in at.expander if e.label == "How this answer was produced"]
