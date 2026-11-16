@@ -133,6 +133,21 @@ def test_strip_shows_a_rejection_in_red() -> None:
     assert "Guard passed" not in strip
 
 
+def test_strip_drops_the_engine_badge_when_the_engine_never_ran() -> None:
+    rejected = {"is_valid": False, "sanitized_query": "", "rejection_reason": "Only SELECT is allowed"}
+
+    strip = trust_panel.strip("sql", "live", rejected, 0, 0.0, engine_ran=False)
+
+    assert "Read-only engine" not in strip
+    assert ":red-badge[" in strip and "Guard rejected" in strip
+
+
+def test_strip_drops_the_isolation_badge_when_pandas_never_ran() -> None:
+    strip = trust_panel.strip("pandas", "live", None, 0, 0.0, engine_ran=False)
+
+    assert "Isolated process" not in strip
+
+
 def test_strip_for_pandas_names_isolation_not_a_guard() -> None:
     strip = trust_panel.strip("pandas", "live", None, 1, 0.2)
 

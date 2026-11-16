@@ -34,8 +34,9 @@ def _model_output(source: str) -> TrustCheck:
 
 
 def build_checks(mode: str, source: str, validation_result: dict | None,
-                 row_count: int, query_elapsed: float) -> list[TrustCheck]:
-    """One check per control that applied to this answer."""
+                 row_count: int, query_elapsed: float, engine_ran: bool = True) -> list[TrustCheck]:
+    """One check per control that applied to this answer. With engine_ran False
+    (the guard or blocklist stopped the code first) the engine badge is dropped."""
     rows = TrustCheck("Rows returned", f"{row_count:,} in {query_elapsed:.2f}s",
                       f"{row_count:,} {'row' if row_count == 1 else 'rows'} · {query_elapsed:.2f}s")
     if mode == "sql":
@@ -52,7 +53,8 @@ def build_checks(mode: str, source: str, validation_result: dict | None,
             guard,
             TrustCheck("Row cap", f"{sql_guard.MAX_ROWS:,} rows"),
             TrustCheck("Engine", "read-only: authorizer allowlist + PRAGMA query_only",
-                       ":material/lock: Read-only engine", "green"),
+                       ":material/lock: Read-only engine", "green")
+            if engine_ran else TrustCheck("Engine", "not reached"),
             TrustCheck("Time budget", f"{sqlite_backend.QUERY_TIME_BUDGET_SECONDS} s"),
             rows,
         ]
@@ -60,17 +62,18 @@ def build_checks(mode: str, source: str, validation_result: dict | None,
         _model_output(source),
         TrustCheck("Blocklist", "generated code is screened before it runs"),
         TrustCheck("Isolation", "separate process, copy of the data",
-                   ":material/lock: Isolated process", "green"),
+                   ":material/lock: Isolated process", "green")
+        if engine_ran else TrustCheck("Isolation", "not reached"),
         TrustCheck("Timeout", f"{csv_backend._EXEC_TIMEOUT} s"),
         rows,
     ]
 
 
 def strip(mode: str, source: str, validation_result: dict | None,
-          row_count: int, query_elapsed: float) -> str:
+          row_count: int, query_elapsed: float, engine_ran: bool = True) -> str:
     """One line of badges: what held, where the model output came from, how much came back.
     Limits and wording stay in the expandable details."""
-    checks = build_checks(mode, source, validation_result, row_count, query_elapsed)
+    checks = build_checks(mode, source, validation_result, row_count, query_elapsed, engine_ran)
     return " ".join(f":{c.tone}-badge[{c.short}]" for c in checks if c.short)
 
 
@@ -104,21 +107,21 @@ def eval_line(mode: str, metrics_path: str = METRICS_PATH) -> str | None:
 
 
 def render_strip(mode: str, source: str, validation_result: dict | None,
-                 row_count: int, query_elapsed: float) -> None:
+                 row_count: int, query_elapsed: float, engine_ran: bool = True) -> None:
     """The glanceable proof line, shown with the answer."""
     import streamlit as st
 
-    st.markdown(strip(mode, source, validation_result, row_count, query_elapsed))
+    st.markdown(strip(mode, source, validation_result, row_count, query_elapsed, engine_ran))
 
 
 def render(mode: str, source: str, validation_result: dict | None,
-           row_count: int, query_elapsed: float) -> None:
+           row_count: int, query_elapsed: float, engine_ran: bool = True) -> None:
     """The full details, collapsed: every control, its limit, and the eval sentence.
     Imported lazily so the helpers above stay Streamlit-free."""
     import streamlit as st
 
     with st.expander("How this answer was produced", expanded=False):
-        for check in build_checks(mode, source, validation_result, row_count, query_elapsed):
+        for check in build_checks(mode, source, validation_result, row_count, query_elapsed, engine_ran):
             label_col, detail_col = st.columns([1, 4])
             label_col.markdown(f"**{check.label}**")
             detail_col.markdown(check.detail)

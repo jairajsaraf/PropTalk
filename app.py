@@ -213,6 +213,7 @@ if question:
         llm_response = cached["llm_response"]
         generated_code = cached["generated_code"]
         validation_result = cached["validation_result"]
+        engine_ran = cached.get("engine_ran", True)
         result_df = cached["result_df"]
         error_msg = cached["error_msg"]
         source = cached.get("source")
@@ -227,6 +228,7 @@ if question:
         llm_response = None
         generated_code = None
         validation_result = None
+        engine_ran = True  # False once the guard or blocklist stops the code before any engine runs
         result_df = None
         error_msg = None
         query_elapsed = 0.0
@@ -280,9 +282,12 @@ if question:
                         "rejection_reason": reason,
                     }
                     if not is_valid:
+                        engine_ran = False
                         error_msg = f"Query rejected: {reason}"
                     else:
                         generated_code = sanitized
+                elif csv_backend._validate_pandas_code(generated_code):
+                    engine_ran = False
 
                 if not error_msg:
                     query_start = time.time()
@@ -304,6 +309,7 @@ if question:
             "llm_response": llm_response,
             "generated_code": generated_code,
             "validation_result": validation_result,
+            "engine_ran": engine_ran,
             "result_df": result_df,
             "error_msg": error_msg,
             "source": source,
@@ -333,7 +339,7 @@ if question:
     # model call nothing ran, and badges would claim controls that never applied.
     pipeline_ran = bool(generated_code)
     if pipeline_ran:
-        trust_panel.render_strip(mode, source or "live", validation_result, row_count, query_elapsed)
+        trust_panel.render_strip(mode, source or "live", validation_result, row_count, query_elapsed, engine_ran)
 
     if answered:
         chart_config = llm_response.get("chart_config") if llm_response else None
@@ -359,7 +365,7 @@ if question:
             st.caption("This is the code that ran against the data, after validation.")
 
     if pipeline_ran:
-        trust_panel.render(mode, source or "live", validation_result, row_count, query_elapsed)
+        trust_panel.render(mode, source or "live", validation_result, row_count, query_elapsed, engine_ran)
 
     with st.expander("Debug details"):
         col1, col2 = st.columns(2)
