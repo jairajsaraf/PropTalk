@@ -1,6 +1,6 @@
 # PropTalk
 
-**Live demo: https://proptalk.streamlit.app/** (synthetic data; the example questions work without an LLM quota).
+**Live demo: https://proptalk.streamlit.app/** (synthetic data; all but one of the example questions work without an LLM quota, see Limitations).
 
 Ask questions about property data in plain English and get a chart and a table back. An LLM writes the query, PropTalk validates it, runs it against a locked-down engine, and renders the result.
 
@@ -125,6 +125,7 @@ A new live run needs its own preregistration and a new report path: `make live R
 | 2 | In-memory SQLite as the SQL engine for the demo | [ADR 0002](docs/adr/0002-sqlite-stand-in.md) |
 | 3 | Plain `requests` instead of a vendor SDK | [ADR 0003](docs/adr/0003-requests-over-sdk.md) |
 | 4 | Run pandas code in a worker process with a timeout | [ADR 0004](docs/adr/0004-pandas-subprocess.md) |
+| 5 | Deploy publicly, and show how each answer was produced | [ADR 0005](docs/adr/0005-deploy-trust.md) |
 
 ## Project layout
 
